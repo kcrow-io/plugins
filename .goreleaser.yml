@@ -1,0 +1,50 @@
+project_name: kcrow-plugins
+version: 2
+before:
+  hooks:
+  - go mod vendor
+
+builds:
+  - id: "override"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/override/main.go
+    binary: override
+  - id: "escape"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/escape/main.go
+    binary: escape
+nfpms:
+  - id: package
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - deb
+      - rpm
+    bindir: /opt/nri/bin
+    contents:
+    - src: "README.md" 
+      dst: "README.md"
+      file_info:
+        mode: 0644
+          
+archives:
+  - id: tar
+    format: tar.gz
+    wrap_in_directory: true
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+release:
+  github:
+    owner: kcrow-io
+    name: plugins

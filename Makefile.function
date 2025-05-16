@@ -1,0 +1,9 @@
+
+#-----------function-------
+
+# define a function replacing spaces with commas in a list
+empty :=
+space := $(empty) $(empty)
+comma := ,
+join-with-comma = $(subst $(space),$(comma),$(strip $1))
+

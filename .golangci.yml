@@ -1,0 +1,14 @@
+# Options for analysis running.
+run:
+  timeout: 5m
+  allow-parallel-runners: true
+  allow-serial-runners: true
+linters:
+  presets:
+    - bugs
+    - error
+    - unused
+  fast: true
+issues:
+  exclude-dirs:
+    - vendor/

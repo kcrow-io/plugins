@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nri-plugins
+  namespace: kube-system
+  labels:
+    app: nri-plugins
+spec:
+  selector:
+    matchLabels:
+      app: nri-plugins
+  template:
+    metadata:
+      labels:
+        app: nri-plugins
+    spec:
+      hostPID: true
+      containers:
+      - name: nri-installer
+        image: nri-plugins:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: containerd-config
+          mountPath: /etc/containerd
+        - name: plugin-dir
+          mountPath: /opt/nri/plugins
+        env:
+        - name: PLUGINS_DIR
+          value: "/opt/kcrow/bin"
+        - name: CONTAINERD_CONFIG_DIR
+          value: "/etc/containerd"
+        command: ["python3", "/install/nri-plugins/install_nri_plugins.py"]
+      volumes:
+      - name: containerd-config
+        hostPath:
+          path: /etc/containerd
+      - name: plugin-dir
+        hostPath:
+          path: /opt/nri/plugins
