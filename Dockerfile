@@ -1,18 +1,18 @@
 # Multi-stage build for multi-arch support
 # Build stage
 FROM --platform=$BUILDPLATFORM golang:1.24 as builder
-RUN echo "Building for TARGETOS: ${TARGETOS}" && \
-     echo "Building for TARGETARCH: ${TARGETARCH}" && \
-     echo "Building for BUILDPLATFORM: ${BUILDPLATFORM}" \
-     && echo "Building for TARGETPLATFORM: ${TARGETPLATFORM}"
+
+ARG TARGETPLATFORM
 
 WORKDIR /app
 COPY . .
 
-RUN BUILD_PLATFORMS=$BUILDPLATFORM make build
+RUN BUILD_PLATFORMS=$TARGETPLATFORM make build
 
 # Runtime image
-FROM --platform=$BUILDPLATFORM python:3.11-slim
+FROM python:3.11-slim
+
+ARG TARGETPLATFORM
 
 ARG GIT_COMMIT_VERSION
 ENV GIT_COMMIT_VERSION=${GIT_COMMIT_VERSION}
@@ -23,7 +23,7 @@ ENV VERSION=${VERSION}
 
 WORKDIR /
 RUN mkdir -p /opt/kcrow/bin
-COPY --from=builder /app/bin/$BUILDPLATFORM/ /opt/kcrow/bin/
+COPY --from=builder /app/bin/$TARGETPLATFORM/ /opt/kcrow/bin/
 COPY install/install_nri_plugins.py .
 
 # No need to install dependencies as they're handled by install script
