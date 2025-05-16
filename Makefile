@@ -14,8 +14,7 @@ CONTROLLER_BIN_SUBDIRS := cmd/override cmd/escape
 
 SUBDIRS := $(CONTROLLER_BIN_SUBDIRS)
 
-build:
-	@$(GO_MOD_VENDOR)
+build: vendor
 	@for DIR in $(SUBDIRS); do \
 		for PLATFORM in $(BUILD_PLATFORMS); do \
 			mkdir -p $(ROOT_DIR)/bin/$${PLATFORM}; \
@@ -25,6 +24,9 @@ build:
 		done; \
 	done
 	@echo "Build complete."
+
+vendor:
+	@$(GO) mod vendor
 
 # ============ build-image ============
 .PHONY: image
