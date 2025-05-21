@@ -6,5 +6,5 @@ import (
 )
 
 func main() {
-	plugins.RunStub(escape.New())
+	plugins.RunStub(escape.New(escape.DefaultConfig()))
 }

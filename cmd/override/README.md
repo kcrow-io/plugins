@@ -2,6 +2,8 @@
 
 This plugin overrides container configurations according to ocispec config file.
 
+oci Spec please refer to https://github.com/opencontainers/runtime-spec/blob/master/config.md
+
 ## Features
 - Set container rlimit configurations
 - Add container hooks
@@ -13,6 +15,7 @@ Create `override.conf` file with following content (OCI spec format):
 
 ```json
 {
+  "ociVersion": "",
   "process": {
     "rlimits": [
       {

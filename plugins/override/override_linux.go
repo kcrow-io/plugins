@@ -46,11 +46,15 @@ func (o *override) CreateContainer(ctx context.Context, pod *api.PodSandbox, con
 
 func (o *override) Configure(ctx context.Context, config, runtime, version string) (api.EventMask, error) {
 	o.log = log.G(ctx).WithField(plugins.FieldName, name)
+	var (
+		mask api.EventMask
+	)
+	mask.Set(api.Event_CREATE_CONTAINER)
 
 	o.log.WithFields(logrus.Fields{
 		"runtime": runtime,
 		"version": version,
-	}).Infof("configure %s plugin", name)
+	}).Infof("configure plugin, handler event: %s", mask.PrettyString())
 
 	if config != "" {
 		_, err := o.config.ReadFrom(strings.NewReader(config))
@@ -59,7 +63,7 @@ func (o *override) Configure(ctx context.Context, config, runtime, version strin
 			return 0, err
 		}
 	}
-	return api.EventMask(api.Event_CREATE_CONTAINER), nil
+	return mask, nil
 }
 
 func New(cfg *Config) plugins.Pluginer {

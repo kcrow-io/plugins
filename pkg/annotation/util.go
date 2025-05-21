@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	Separator = ":"
+	Separator = ","
 )
 
 func IterSuffix(kv map[string]string, fn func(suffix string, class string, value string) (bool, error)) error {

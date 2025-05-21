@@ -54,12 +54,18 @@ def is_executable(file_path):
 
 def atomic_copy(src, dst):
     """Atomic file copy"""
+    # Check compare
+    if os.path.exists(dst):
+        if filecmp.cmp(src, dst, shallow=False):
+            return False  # Files are identical, skip copy
+
     try:
         # Copy to temp file first
         temp_dst = f"{dst}.tmp"
         shutil.copy2(src, temp_dst)
         # Rename to target file
         os.rename(temp_dst, dst)
+        return True
     except Exception as e:
         # Clean up temp file
         if os.path.exists(temp_dst):
@@ -95,19 +101,19 @@ def copy_plugins(plugins, src_dir, dst_dir, etc_src_dir, etc_dst_dir, begin_numb
                 
             # Check config file
             config_src = os.path.join(etc_src_dir, f"{plugin}.conf")
-            config_dst = os.path.join(etc_dst_dir, f"{current_number}-{plugin}.conf")
+            config_dst = os.path.join(etc_dst_dir, f"{plugin}.conf")
             
             try:
                 # Copy plugin binary
                 print(f"Copying {src} to {dst}")
-                atomic_copy(src, dst)
-                copied_files.append(dst)
+                if atomic_copy(src, dst):
+                    copied_files.append(dst)
                 
                 # Copy config file if exists
                 if os.path.exists(config_src):
                     print(f"Copying config {config_src} to {config_dst}")
-                    atomic_copy(config_src, config_dst)
-                    copied_configs.append(config_dst)
+                    if atomic_copy(config_src, config_dst):
+                        copied_configs.append(config_dst)
                 else:
                     print(f"No config file found for {plugin}")
                     

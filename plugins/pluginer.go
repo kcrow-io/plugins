@@ -13,10 +13,6 @@ const (
 	AnnotationPrefix = "io.kcrow."
 )
 
-var (
-	plugins = make(map[string]Pluginer)
-)
-
 type Configer interface {
 	ReadFrom(r io.Reader) (int64, error)
 	WriteTo(w io.Writer) (int64, error)
@@ -37,30 +33,24 @@ func (n *NopConfig) WriteTo(w io.Writer) (int64, error) {
 	return 0, nil
 }
 
-func RunStub(p Pluginer) error {
+func RunStub(p any) error {
 	var (
-		err error
-		ctx = context.Background()
+		err  error
+		ctx  = context.Background()
+		name string
 	)
-
+	plugin, ok := p.(Pluginer)
+	if ok {
+		name = plugin.Name()
+	}
 	st, err := stub.New(p)
 	if err != nil {
-		log.G(ctx).WithField(FieldName, p.Name()).WithError(err).Fatal("failed to create stub")
+		log.G(ctx).WithField(FieldName, name).WithError(err).Fatal("failed to create stub")
 		return err
 	}
 
 	if err = st.Run(ctx); err != nil {
-		log.G(ctx).WithField(FieldName, p.Name()).WithError(err).Fatal("failed to run stub")
+		log.G(ctx).WithField(FieldName, name).WithError(err).Fatal("failed to run stub")
 	}
 	return err
-}
-
-func RegisterPlugin(p Pluginer) {
-	if p != nil {
-		plugins[p.Name()] = p
-	}
-}
-
-func Plugins() map[string]Pluginer {
-	return plugins
 }
