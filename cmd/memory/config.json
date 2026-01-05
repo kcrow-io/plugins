@@ -1,0 +1,5 @@
+{
+  "include-namespace": [],
+  "exclude-namespace": ["kube-system", "kube-public"],
+  "high": 0.8
+}
