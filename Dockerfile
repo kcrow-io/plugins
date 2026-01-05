@@ -10,7 +10,7 @@ COPY . .
 RUN BUILD_PLATFORMS=$TARGETPLATFORM make build
 
 # Runtime image
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 ARG TARGETPLATFORM
 
