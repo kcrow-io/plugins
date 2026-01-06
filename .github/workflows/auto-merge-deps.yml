@@ -22,7 +22,7 @@ jobs:
 
       - name: Check PR details
         id: pr-check
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -52,7 +52,7 @@ jobs:
 
       - name: Wait for CI checks
         if: fromJSON(steps.pr-check.outputs.result).canAutoMerge
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const maxWaitTime = 20 * 60 * 1000; // 20 minutes
@@ -116,7 +116,7 @@ jobs:
 
       - name: Auto-approve PR
         if: fromJSON(steps.pr-check.outputs.result).canAutoMerge && github.actor == 'dependabot[bot]'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             await github.rest.pulls.createReview({
@@ -129,7 +129,7 @@ jobs:
 
       - name: Enable auto-merge
         if: fromJSON(steps.pr-check.outputs.result).canAutoMerge
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             try {
