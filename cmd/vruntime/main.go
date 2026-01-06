@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/containerd/nri/pkg/api"
-	"github.com/kcrow-io/plugins/plugins"
+	"github.com/kcrow-io/plugins/pkg/log"
+	"github.com/kcrow-io/plugins/pkg/plugins"
 )
 
 type vruntime struct {
@@ -35,5 +37,8 @@ func (o *vruntime) CreateContainer(ctx context.Context, pod *api.PodSandbox, con
 
 func main() {
 	plugin := newVruntime()
-	plugins.RunStub(plugin)
+	if err := plugins.RunStub(plugin); err != nil {
+		log.G(context.TODO()).WithError(err).Fatal("Failed to run vruntime plugin")
+		os.Exit(1)
+	}
 }

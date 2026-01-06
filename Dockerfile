@@ -24,7 +24,7 @@ ENV VERSION=${VERSION}
 WORKDIR /
 RUN mkdir -p /opt/kcrow/bin
 COPY --from=builder /app/bin/$TARGETPLATFORM/ /opt/kcrow/bin/
-COPY install/install_nri_plugins.py .
+COPY deploy/install.py .
 
 # No need to install dependencies as they're handled by install script
-CMD ["python3", "install_nri_plugins.py"]
+CMD ["python3", "install.py"]

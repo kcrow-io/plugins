@@ -6,7 +6,7 @@ import (
 
 	"github.com/containerd/nri/pkg/api"
 	"github.com/kcrow-io/plugins/pkg/log"
-	"github.com/kcrow-io/plugins/plugins"
+	"github.com/kcrow-io/plugins/pkg/plugins"
 	"github.com/sirupsen/logrus"
 )
 

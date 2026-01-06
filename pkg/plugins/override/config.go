@@ -9,7 +9,7 @@ import (
 
 	"github.com/containerd/nri/pkg/api"
 	"github.com/kcrow-io/plugins/pkg/log"
-	"github.com/kcrow-io/plugins/plugins"
+	"github.com/kcrow-io/plugins/pkg/plugins"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
@@ -69,7 +69,7 @@ func (c *Config) String() string {
 func (c *Config) Apply(adj *api.ContainerAdjustment) bool {
 	var (
 		changed bool
-		proc    = c.Spec.Process
+		proc    = c.Process
 	)
 	if proc != nil {
 		if proc.Env != nil {
@@ -88,9 +88,9 @@ func (c *Config) Apply(adj *api.ContainerAdjustment) bool {
 		}
 	}
 
-	if c.Spec.Hooks != nil {
+	if c.Hooks != nil {
 		changed = true
-		adj.Hooks = api.FromOCIHooks(c.Spec.Hooks)
+		adj.Hooks = api.FromOCIHooks(c.Hooks)
 	}
 	return changed
 }

@@ -1,14 +1,15 @@
+version: "2"
+
 # Options for analysis running.
 run:
   timeout: 5m
   allow-parallel-runners: true
   allow-serial-runners: true
+
 linters:
-  presets:
-    - bugs
-    - error
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
     - unused
-  fast: true
-issues:
-  exclude-dirs:
-    - vendor/

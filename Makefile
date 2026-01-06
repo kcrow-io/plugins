@@ -10,11 +10,11 @@ all: build
 
 .PHONY: all build 
 
-CONTROLLER_BIN_SUBDIRS := cmd/override cmd/escape cmd/memory cmd/vruntime
+CONTROLLER_BIN_SUBDIRS := cmd/override cmd/escape cmd/memory cmd/iolimit
 
 SUBDIRS := $(CONTROLLER_BIN_SUBDIRS)
 
-build: vendor
+build:
 	@for DIR in $(SUBDIRS); do \
 		for PLATFORM in $(BUILD_PLATFORMS); do \
 			mkdir -p $(ROOT_DIR)/bin/$${PLATFORM}; \
@@ -24,9 +24,6 @@ build: vendor
 		done; \
 	done
 	@echo "Build complete."
-
-vendor:
-	@$(GO) mod vendor
 
 # ============ build-image ============
 .PHONY: image
@@ -46,7 +43,6 @@ image:
 lint-go:
 	$(QUIET) $(GO_VET) \
     ./cmd/... \
-    ./pkg/... \
-    ./plugins/...
+    ./pkg/...
 	@$(ECHO_CHECK) golangci-lint
 	$(QUIET) golangci-lint run

@@ -11,6 +11,7 @@ import (
 const (
 	FieldName        = "plugin_name"
 	AnnotationPrefix = "io.kcrow."
+	Separator        = ","
 )
 
 type Configer interface {
@@ -20,7 +21,6 @@ type Configer interface {
 
 type Pluginer interface {
 	Name() string
-	Default() Configer
 }
 
 type NopConfig struct{}

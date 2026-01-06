@@ -57,19 +57,19 @@ Binaries are output to `bin/{platform}/` directories.
    - Allows containers to escape resource limits (CPU, memory)
    - Controlled via annotation: `io.kcrow.escape: cpu,memory`
 
-3. **VRuntime Plugin** (`cmd/vruntime/`)
-   - Removes specific volume mounts from containers for security
-   - Targets mounts with destinations starting with `/var/run/secrets`
-   - Enhances container security by removing sensitive runtime information
-
-4. **Memory Plugin** (`cmd/memory/`, `plugins/memory/`)
+3. **Memory Plugin** (`cmd/memory/`, `plugins/memory/`)
    - Automatically sets `memory.high` to a percentage of container's memory limit
    - Supports namespace filtering (include/exclude lists)
    - Configurable high percentage (default: 80%)
 
+4. **IOLimit Plugin** (`cmd/iolimit/`, `plugins/iolimit/`)
+   - Monitors container disk usage and automatically applies I/O bandwidth limits
+   - Applies limits when disk usage exceeds configured threshold
+   - Supports both cgroup v1 and v2
+   - Configurable disk threshold, bandwidth limit, and watch interval
+
 ### Key Directories
 - `cmd/`: Main entry points for each plugin
-- `plugins/`: Plugin implementations
 - `pkg/`: Shared utilities (annotation, cgroup, log)
 - `deploy/`: Kubernetes deployment manifests
 - `install/`: Installation scripts
@@ -114,9 +114,10 @@ sudo ctr run --rm --runtime io.containerd.runc.v2 \
   --memory 1073741824 \
   docker.io/library/alpine:latest test-memory
 
-# Test vruntime plugin (check that /var/run/secrets is not mounted)
+# Test iolimit plugin (check that I/O limits are applied when disk usage exceeds threshold)
+# Note: This requires the container to actually use disk space beyond the configured threshold
 sudo ctr run --rm --runtime io.containerd.runc.v2 \
-  docker.io/library/alpine:latest test-vruntime sh -c "ls -la /var/run/secrets || echo 'Mount removed successfully'"
+  docker.io/library/alpine:latest test-iolimit sh -c "dd if=/dev/zero of=/tmp/testfile bs=1M count=5000"
 ```
 
 ## Code Patterns

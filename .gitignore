@@ -94,3 +94,7 @@ docs/site.tar.gz
 test/.cluster
 test/.download
 test/e2edebugLog.txt
+
+# ai generator tmp 
+.plan*
+.claude*
