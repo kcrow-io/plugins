@@ -1,6 +1,6 @@
 # Multi-stage build for multi-arch support
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.24 as builder
+FROM --platform=$BUILDPLATFORM golang:1.25 as builder
 
 ARG TARGETPLATFORM
 
