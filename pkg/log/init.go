@@ -8,8 +8,9 @@ import (
 )
 
 func init() {
+	output := os.Stdout
 	logrus.StandardLogger().SetFormatter(&logrus.TextFormatter{PadLevelText: true})
-	logrus.StandardLogger().SetOutput(os.Stdout)
+	logrus.StandardLogger().SetOutput(output)
 }
 
 func G(ctx context.Context) *logrus.Entry {

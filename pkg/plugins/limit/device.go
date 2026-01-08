@@ -1,4 +1,4 @@
-package iolimit
+package limit
 
 import (
 	"fmt"

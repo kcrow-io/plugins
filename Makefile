@@ -10,7 +10,7 @@ all: build
 
 .PHONY: all build 
 
-CONTROLLER_BIN_SUBDIRS := cmd/override cmd/escape cmd/memory cmd/iolimit
+CONTROLLER_BIN_SUBDIRS := cmd/override cmd/escape cmd/memory cmd/limit
 
 SUBDIRS := $(CONTROLLER_BIN_SUBDIRS)
 

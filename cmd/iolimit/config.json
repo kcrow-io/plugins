@@ -1,7 +1,0 @@
-{
-  "containerd_socket": "/run/containerd/containerd.sock",
-  "containerd_root": "/var/lib/containerd",
-  "max_disk_bytes": 4294967296,
-  "bps_limit": 2049,
-  "watch_interval": 60
-}
