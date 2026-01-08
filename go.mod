@@ -5,6 +5,7 @@ go 1.25.0
 exclude google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 
 require (
+	github.com/BurntSushi/toml v0.3.1
 	github.com/containerd/containerd/v2 v2.2.1
 	github.com/containerd/nri v0.11.0
 	github.com/opencontainers/cgroups v0.0.6
@@ -15,7 +16,6 @@ require (
 require (
 	cyphar.com/go-pathrs v0.2.1 // indirect
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 // indirect
-	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Microsoft/hcsshim v0.14.0-rc.1 // indirect
 	github.com/containerd/cgroups/v3 v3.1.2 // indirect
@@ -54,6 +54,7 @@ require (
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
+	github.com/opencontainers/runc v1.2.3 // indirect
 	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

@@ -1,0 +1,165 @@
+package limit
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/containerd/containerd/v2/client"
+	"github.com/containerd/nri/pkg/api"
+	"github.com/containerd/nri/pkg/stub"
+	"github.com/kcrow-io/plugins/pkg/cgroup"
+	"github.com/kcrow-io/plugins/pkg/containerd"
+	"github.com/kcrow-io/plugins/pkg/log"
+	"github.com/kcrow-io/plugins/pkg/plugins"
+	"github.com/sirupsen/logrus"
+)
+
+var _ plugins.Pluginer = (*Plugin)(nil)
+
+const (
+	name = "limit"
+
+	containerdKindKey  = "io.cri-containerd.kind"
+	containerKindValue = "container"
+)
+
+type Plugin struct {
+	log    *logrus.Entry
+	config *Config
+
+	device *DeviceNumber
+}
+
+// New creates a new io plugin
+func New() *Plugin {
+	return &Plugin{
+		log:    log.G(context.Background()).WithField("plugin", name),
+		config: NewConfig(),
+	}
+}
+
+// Name returns the plugin name
+func (p *Plugin) Name() string {
+	return name
+}
+
+// Configure is called by NRI to configure the plugin
+func (p *Plugin) Configure(ctx context.Context, config, runtime, version string) (stub.EventMask, error) {
+	p.log.Infof("Configuring plugin (runtime: %s, version: %s)", runtime, version)
+
+	err := p.config.Parse([]byte(config))
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	p.log.Infof("plugin config: %+v", p.config)
+
+	// Detect device number using containerd root
+	device, err := GetDeviceNumberFromPath(p.config.cntrd.Root)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get device number: %w", err)
+	}
+
+	p.log.Infof("Detected device number: %s", device.String())
+	p.device = device
+	// Create and start watcher
+	watcher := containerd.NewWatcher(p.config.cntrd, &containerd.Config{
+		WatchInterval: time.Duration(p.config.WatchInterval) * time.Second,
+		Containerfn:   p.checkContainer,
+	})
+	watcher.Start()
+
+	p.log.Info("Plugin configured successfully")
+	var mask api.EventMask
+	mask.Set(api.Event_CREATE_CONTAINER)
+	return mask, nil
+}
+
+func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Container) {
+	// Get container info to check snapshotter
+	info, err := container.Info(ctx)
+	if err != nil {
+		p.log.Debugf("Failed to get container info for %s: %v", id, err)
+		return
+	}
+
+	// Only process containers with overlayfs snapshotter
+	if info.Snapshotter != "overlayfs" {
+		return
+	}
+	usage, err := p.config.cntrd.SnapshotService(info.Snapshotter).Usage(ctx, info.SnapshotKey)
+	if err != nil {
+		p.log.Debugf("Failed to get snapshot usage for %s: %v", id, err)
+		return
+	}
+
+	spec, err := container.Spec(ctx)
+	if err != nil {
+		p.log.Errorf("Failed to get container spec for %s: %v", id, err)
+		return
+	}
+
+	cgroupPath := spec.Linux.CgroupsPath
+	diskUsage := usage.Size
+
+	if diskUsage > int64(p.config.Io.MaxDiskBytes) {
+		// Disk usage exceeds threshold, Apply limit
+		if err := ApplyIOLimit(cgroupPath, p.device, p.config.Io.BpsLimit); err != nil {
+			p.log.Errorf("Failed to apply io limit to container %s (cgroup: %s): %v", id, cgroupPath, err)
+		} else {
+			p.log.Infof("Applied io limit to container %s (cgroup: %s, disk usage: %d bytes > threshold: %d bytes)",
+				id, cgroupPath, diskUsage, p.config.Io.BpsLimit)
+		}
+	}
+}
+
+// checks a single container and clear cache
+func (p *Plugin) clearCache(ctx context.Context, id string, container client.Container) {
+	spec, err := container.Spec(ctx)
+	if err != nil {
+		p.log.Errorf("Failed to get container spec for %s: %v", id, err)
+		return
+	}
+
+	cgroupPath := spec.Linux.CgroupsPath
+
+	statpath, err := cgroup.GetCgroupFilePath(cgroupPath, "memory", "memory.stat")
+	if err != nil {
+		return
+	}
+	memstat, err := parseStat(ctx, statpath)
+	if err != nil {
+		return
+	}
+
+	if memstat.cache > p.config.Memory.MinCacheBytes && memstat.ratio > p.config.Memory.CacheRssRatio {
+		// Memory usage exceeds threshold, Apply limit
+		p.log.Infof("Container id %s memory exceeds, %s", id, memstat)
+		if err := ApplyCleanCache(cgroupPath, memstat.cache); err != nil {
+			p.log.Errorf("Failed to clear cache to container %s (cgroup: %s): %v", spec.Hostname, cgroupPath, err)
+		}
+	}
+}
+
+// checkContainer checks a single container and applies limit
+func (p *Plugin) checkContainer(ctx context.Context, container client.Container) {
+	id := container.ID()
+	if len(id) > 6 {
+		id = id[:6]
+	}
+	info, err := container.Info(ctx)
+	if err != nil {
+		p.log.Errorf("Failed to get container info for %s: %v", id, err)
+		return
+	}
+	if len(info.Labels) == 0 || info.Labels[containerdKindKey] != containerKindValue {
+		return
+	}
+	p.limitblkio(ctx, id, container)
+	p.clearCache(ctx, id, container)
+}
+
+func (p *Plugin) CreateContainer(ctx context.Context, pod *api.PodSandbox, container *api.Container) (*api.ContainerAdjustment, []*api.ContainerUpdate, error) {
+	return &api.ContainerAdjustment{}, nil, nil
+}

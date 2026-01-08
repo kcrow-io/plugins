@@ -13,8 +13,8 @@ This project provides common NRI plugins to extend containerd's container runtim
 3. [memory plugin](./docs/memory.md)
    Automatically sets `memory.high` to a percentage of container's memory limit for better memory management
 
-4. [iolimit plugin](./docs/iolimit.md)
-   Monitors container disk usage and automatically applies I/O bandwidth limits when disk usage exceeds a configured threshold
+4. [limit plugin](./docs/limit.md)
+   Monitors container disk usage and automatically applies I/O bandwidth limits when disk usage exceeds a configured threshold, clear cache when container cache usage exceeds a configured threshold
 
 ## Installation
 
@@ -37,13 +37,18 @@ Each plugin requires a configuration file in JSON format, placed in `/opt/nri/co
 }
 ```
 
-**IOLimit Plugin** (`/opt/nri/conf/iolimit.conf`):
+**Limit Plugin** (`/opt/nri/conf/limit.conf`):
 ```json
 {
-  "containerd_socket": "/run/containerd/containerd.sock",
-  "containerd_root": "/var/lib/containerd",
-  "max_disk_bytes": 4294967296,
-  "bps_limit": 2049,
+  "containerd_config_path": "/etc/containerd/config.toml",
+  "io" : {
+    "max_disk_bytes": 4294967296, 
+    "bps_limit": 1
+  },
+  "memory": {
+    "cache-rss-ratio": 10,
+    "min-cache-bytes": 104857600 
+  },
   "watch_interval": 60
 }
 ```
@@ -53,7 +58,7 @@ Each plugin requires a configuration file in JSON format, placed in `/opt/nri/co
 NRI plugins are standalone executables that implement the NRI protocol. They should be:
 
 1. **Location**: Placed in `/opt/nri/plugins/` directory
-2. **Naming**: Use descriptive names (e.g., `01-memory`, `02-escape`, `03-iolimit`)
+2. **Naming**: Use descriptive names (e.g., `01-memory`, `02-escape`, `03-limit`)
    - The numeric prefix determines plugin execution order
 3. **Permissions**: Must be executable (`chmod +x`)
 4. **Format**: ELF 64-bit LSB executable for Linux
@@ -61,14 +66,15 @@ NRI plugins are standalone executables that implement the NRI protocol. They sho
 **Directory structure:**
 ```
 /opt/nri/
-├── plugins/
-│   ├── 01-memory      # Memory management plugin
-│   ├── 02-escape      # Resource limit escape plugin
-│   ├── 03-override    # Configuration override plugin
-│   └── 04-iolimit     # I/O limit plugin
-└── conf/
+└── plugins/
+   ├── 01-memory      # Memory management plugin
+   ├── 02-escape      # Resource limit escape plugin
+   ├── 03-override    # Configuration override plugin
+   └── 04-limit       # I/O limit plugin
+/etc/nri/
+└── conf.d/
     ├── memory.conf    # Memory plugin configuration
-    └── iolimit.conf   # IOLimit plugin configuration
+    └── limit.conf     # Limit plugin configuration
 ```
 
 ### Containerd Configuration
@@ -165,7 +171,7 @@ sudo mkdir -p /opt/nri/conf
 sudo cp bin/linux/amd64/memory /opt/nri/plugins/01-memory
 sudo cp bin/linux/amd64/escape /opt/nri/plugins/02-escape
 sudo cp bin/linux/amd64/override /opt/nri/plugins/03-override
-sudo cp bin/linux/amd64/iolimit /opt/nri/plugins/04-iolimit
+sudo cp bin/linux/amd64/limit /opt/nri/plugins/04-limit
 
 # 4. Set executable permissions
 sudo chmod +x /opt/nri/plugins/*

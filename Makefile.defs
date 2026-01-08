@@ -61,6 +61,12 @@ ifeq ($(NOSTRIP),)
 endif
 
 
+# Using go modules directly
+GO_BUILD_FLAGS += -mod=mod
+GO_TEST_FLAGS += -mod=mod
+GO_CLEAN_FLAGS += -mod=mod
+
+
 GO_BUILD = CGO_ENABLED=0 $(GO) build
 # Currently crosscompiling only enabled for arm64 targets
 CGO_CC =
