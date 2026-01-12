@@ -9,22 +9,7 @@ COPY . .
 
 RUN BUILD_PLATFORMS=$TARGETPLATFORM make build
 
-# Runtime image
-FROM python:3.14-slim
+FROM gcr.io/distroless/static:nonroot
 
-ARG TARGETPLATFORM
+COPY --from=builder /app/bin/$TARGETPLATFORM/ /
 
-ARG GIT_COMMIT_VERSION
-ENV GIT_COMMIT_VERSION=${GIT_COMMIT_VERSION}
-ARG GIT_COMMIT_TIME
-ENV GIT_COMMIT_TIME=${GIT_COMMIT_TIME}
-ARG VERSION
-ENV VERSION=${VERSION}
-
-WORKDIR /
-RUN mkdir -p /opt/kcrow/bin
-COPY --from=builder /app/bin/$TARGETPLATFORM/ /opt/kcrow/bin/
-COPY deploy/install.py .
-
-# No need to install dependencies as they're handled by install script
-CMD ["python3", "install.py"]
