@@ -48,9 +48,8 @@ fmt: ## Formats all code with go fmt
 image:
 	$(CONTAINER_ENGINE) build --platform $(IMAGE_PLATFORMS) \
 			--file $(ROOT_DIR)/Dockerfile \
-			--tag $(IMAGE):$(IMAGE_TAG) $(ROOT_DIR) ; \
-	@echo "Image $(IMAGE):$(IMAGE_TAG) build success" 
-
+			--push \
+			--tag $(IMAGE):$(IMAGE_TAG) $(ROOT_DIR)
 
 #============ lints ====================
 lint: fmt tidy download ## Lints all code with golangci-lint
