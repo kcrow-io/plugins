@@ -13,12 +13,8 @@ PREFIX?=/opt/kcrow
 BINDIR?=$(PREFIX)/bin
 BUILD_PLATFORMS ?= linux/amd64 linux/arm64
 
-GIT_COMMIT_VERSION = $(shell git show -s --format='format:%H')
-GIT_COMMIT_TIME = $(shell git show -s --format='format:%aI')
-GIT_BRANCH = $(shell git branch --show-current)
-
 #----------image--------
-CONTAINER_ENGINE ?= docker
+CONTAINER_ENGINE ?= docker buildx
 REGISTER ?= ghcr.io
 GIT_REPO ?= kcrow-io/plugins
 IMAGE_TAG ?= 
@@ -29,7 +25,7 @@ IMAGE_PLATFORMS ?= $(call join-with-comma,$(BUILD_PLATFORMS))
 
 IMAGE ?= ${CONTROLLER_IMAGE_NAME}
 ifeq ($(IMAGE_TAG),)
-    IMAGE_TAG := $(GIT_COMMIT_VERSION)
+    IMAGE_TAG := latest
 endif
 
 #-----------Golang-------

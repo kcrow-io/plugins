@@ -7,6 +7,8 @@ ARG TARGETPLATFORM
 WORKDIR /app
 COPY . .
 
+ENV GOPROXY=https://goproxy.cn,direct
+
 RUN BUILD_PLATFORMS=$TARGETPLATFORM make build
 
 FROM gcr.io/distroless/static:nonroot
