@@ -1,5 +1,0 @@
-{
-  "include-namespace": [],
-  "exclude-namespace": ["kube-system"],
-  "high-ratio": 0.8
-}

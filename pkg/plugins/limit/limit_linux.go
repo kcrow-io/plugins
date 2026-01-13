@@ -47,14 +47,24 @@ func (p *Plugin) Name() string {
 // Configure is called by NRI to configure the plugin
 func (p *Plugin) Configure(ctx context.Context, config, runtime, version string) (stub.EventMask, error) {
 	p.log.Infof("Configuring plugin (runtime: %s, version: %s)", runtime, version)
+	var mask api.EventMask
+	mask.Set(api.Event_CREATE_CONTAINER)
 
 	err := p.config.Parse([]byte(config))
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse config: %w", err)
 	}
-
+	if p.config.LogPath != "" {
+		if err := log.SetupFileLogging(p.config.LogPath); err != nil {
+			p.log.WithError(err).Warnf("Failed to setup file logging to %s, continuing with stdout", p.config.LogPath)
+		}
+	}
 	p.log.Infof("plugin config: %+v", p.config)
-
+	log.PrintBuildInfo(ctx)
+	if p.config.Disabled {
+		p.log.Infof("plugin is disabled, returning")
+		return mask, nil
+	}
 	// Detect device number using containerd root
 	device, err := GetDeviceNumberFromPath(p.config.cntrd.Root)
 	if err != nil {
@@ -71,8 +81,6 @@ func (p *Plugin) Configure(ctx context.Context, config, runtime, version string)
 	watcher.Start()
 
 	p.log.Info("Plugin configured successfully")
-	var mask api.EventMask
-	mask.Set(api.Event_CREATE_CONTAINER)
 	return mask, nil
 }
 

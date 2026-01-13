@@ -98,3 +98,6 @@ test/e2edebugLog.txt
 # ai generator tmp 
 .plan*
 .claude*
+
+out/
+bin/

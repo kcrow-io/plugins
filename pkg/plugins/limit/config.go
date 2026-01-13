@@ -3,9 +3,9 @@ package limit
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 
 	"github.com/kcrow-io/plugins/pkg/containerd"
+	"github.com/kcrow-io/plugins/pkg/log"
 	"github.com/sirupsen/logrus"
 )
 
@@ -77,6 +77,8 @@ func (m *memlimit) String() string {
 
 // Config represents the iolimit plugin configuration
 type Config struct {
+	// Disabled indicates whether the plugin is disabled
+	Disabled bool `json:"disabled,omitempty"`
 	// ContainerdConfigPath is the path to containerd config file
 	ContainerdConfigPath string `json:"containerd_config_path,omitempty"`
 	// WatchInterval is the interval in seconds for watching container stats
@@ -85,6 +87,9 @@ type Config struct {
 	// BpsLimit is the bandwidth limit in bytes per second
 	Io     *iolimit  `json:"io,omitempty"`
 	Memory *memlimit `json:"memory,omitempty"`
+
+	// LogPath is the path to the log file
+	LogPath string `json:"log_path,omitempty"`
 
 	cntrd *containerd.Cntrd `json:"-"`
 }
@@ -118,6 +123,17 @@ func (c *Config) Parse(data []byte) error {
 		if tempconfig.Memory != nil && tempconfig.Memory.Valid() == nil {
 			tempconfig.Memory.CopyTo(c.Memory)
 		}
+		// Setup file logging if log_path is provided
+		if tempconfig.LogPath != "" {
+			c.LogPath = tempconfig.LogPath
+		}
+	}
+
+	// Setup file logging if configured
+	if c.LogPath != "" {
+		if err := log.SetupFileLogging(c.LogPath); err != nil {
+			logrus.Warnf("Failed to setup file logging to %s, continuing with stdout: %v", c.LogPath, err)
+		}
 	}
 
 	// Parse containerd config to get root and socket
@@ -139,29 +155,4 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("watch_interval must be positive")
 	}
 	return nil
-}
-
-// ReadFrom implements the Configer interface
-func (c *Config) ReadFrom(r io.Reader) (int64, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return 0, err
-	}
-
-	if err := json.Unmarshal(data, c); err != nil {
-		return 0, err
-	}
-
-	return int64(len(data)), nil
-}
-
-// WriteTo implements the Configer interface
-func (c *Config) WriteTo(w io.Writer) (int64, error) {
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return 0, err
-	}
-
-	n, err := w.Write(data)
-	return int64(n), err
 }

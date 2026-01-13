@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 
@@ -23,9 +22,13 @@ const (
 
 // Config represents the memory plugin configuration
 type Config struct {
+	// Disabled indicates whether the plugin is disabled
+	Disabled bool `json:"disabled,omitempty"`
+
 	IncludeNamespaces []string `json:"include-namespace,omitempty"`
 	ExcludeNamespaces []string `json:"exclude-namespace,omitempty"`
 	HighRatio         float64  `json:"high-ratio,omitempty"`
+	LogPath           string   `json:"log_path,omitempty"`
 }
 
 // Plugin implements the memory management NRI plugin
@@ -48,16 +51,12 @@ func (p *Plugin) Name() string {
 	return PluginName
 }
 
-// Default returns the default configuration
-func (p *Plugin) Default() plugins.Configer {
-	return &Config{HighRatio: 0.8}
-}
-
 // Configure loads the plugin configuration and detects cgroup version
 func (p *Plugin) Configure(ctx context.Context, config, runtime, version string) (stub.EventMask, error) {
 	logger := log.G(ctx).WithField(plugins.FieldName, PluginName)
 	logger.Info("Configuring memory plugin")
-
+	var mask api.EventMask
+	mask.Set(api.Event_START_CONTAINER)
 	// Override with config parameter if provided
 	if config != "" {
 		tempConfig := &Config{}
@@ -65,7 +64,7 @@ func (p *Plugin) Configure(ctx context.Context, config, runtime, version string)
 			logger.WithError(err).Error("Failed to parse config parameter")
 			return 0, fmt.Errorf("failed to parse config parameter: %w", err)
 		}
-
+		p.config.Disabled = tempConfig.Disabled
 		// Merge config, being careful with float 0 values
 		if len(tempConfig.IncludeNamespaces) > 0 {
 			p.config.IncludeNamespaces = tempConfig.IncludeNamespaces
@@ -77,6 +76,18 @@ func (p *Plugin) Configure(ctx context.Context, config, runtime, version string)
 		if tempConfig.HighRatio > 0 {
 			p.config.HighRatio = tempConfig.HighRatio
 		}
+		// Setup file logging if log_path is provided
+		if tempConfig.LogPath != "" {
+			p.config.LogPath = tempConfig.LogPath
+			if err := log.SetupFileLogging(p.config.LogPath); err != nil {
+				logger.WithError(err).Warnf("Failed to setup file logging to %s, continuing with stdout", p.config.LogPath)
+			}
+		}
+	}
+	log.PrintBuildInfo(ctx)
+	if p.config.Disabled {
+		logger.Info("Memory plugin disabled")
+		return mask, nil
 	}
 	// Validate final configuration
 	if p.config.HighRatio <= 0 || p.config.HighRatio > 1 {
@@ -87,14 +98,16 @@ func (p *Plugin) Configure(ctx context.Context, config, runtime, version string)
 		Info("Memory plugin configured")
 
 	// Subscribe to container start events only
-	var mask api.EventMask
-	mask.Set(api.Event_START_CONTAINER)
 	return mask, nil
 }
 
 // StartContainer handles container start events and sets memory.high
 func (p *Plugin) StartContainer(ctx context.Context, pod *api.PodSandbox, container *api.Container) error {
 	logger := log.G(ctx).WithField(plugins.FieldName, PluginName)
+
+	if p.config.Disabled {
+		return nil
+	}
 
 	// Check if we should process this namespace
 	if !p.shouldProcessNamespace(pod.Namespace) {
@@ -194,29 +207,4 @@ func (p *Plugin) shouldProcessNamespace(namespace string) bool {
 	}
 
 	return true
-}
-
-// ReadFrom implements the Configer interface
-func (c *Config) ReadFrom(r io.Reader) (int64, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return 0, err
-	}
-
-	if err := json.Unmarshal(data, c); err != nil {
-		return 0, err
-	}
-
-	return int64(len(data)), nil
-}
-
-// WriteTo implements the Configer interface
-func (c *Config) WriteTo(w io.Writer) (int64, error) {
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return 0, err
-	}
-
-	n, err := w.Write(data)
-	return int64(n), err
 }
