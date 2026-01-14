@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/containerd/nri/pkg/api"
@@ -133,22 +132,17 @@ func (p *Plugin) StartContainer(ctx context.Context, pod *api.PodSandbox, contai
 	logger.WithField("memory_limit", memoryLimit.Value).
 		WithField("memory_high", memoryHigh).
 		WithField("high_ratio", p.config.HighRatio).
-		Info("Setting memory.high for container")
+		Info("Setting memoryHigh for container")
 
 	// Set memory.high using detected cgroup version
 	if err := p.setMemoryHigh(ctx, container, memoryHigh); err != nil {
-		logger.WithError(err).Error("Failed to set memory.high")
-		return err
+		logger.WithError(err).Warningf("Failed to set memoryHigh")
 	}
-
-	logger.WithField("container", container.Name).
-		WithField("memory_high", memoryHigh).
-		Info("Successfully set memory.high for container")
 
 	return nil
 }
 
-// setMemoryHigh sets memory.high using the detected cgroup version
+// setMemoryHigh sets memory.high (v2) or memory.soft_limit_in_bytes (v1)
 func (p *Plugin) setMemoryHigh(ctx context.Context, container *api.Container, memoryHigh int64) error {
 	logger := log.G(ctx).WithField(plugins.FieldName, PluginName)
 
@@ -163,25 +157,25 @@ func (p *Plugin) setMemoryHigh(ctx context.Context, container *api.Container, me
 	// Prepare the value to write
 	memoryHighStr := strconv.FormatInt(memoryHigh, 10)
 
-	// For v1, we need to specify the subsystem
-	subsystem := ""
-	if !cgroups.IsCgroup2UnifiedMode() {
-		subsystem = "memory"
-	}
-
-	// Write memory.high using the unified cgroup file writer
-	if err := cgroup.WriteCgroupFile(cgroupPath, subsystem, "memory.high", memoryHighStr); err != nil {
-		// For v1, memory.high might not be available
-		if os.IsNotExist(err) {
-			logger.Warn("memory.high not available, skipping")
-			return nil
+	var err error
+	if cgroups.IsCgroup2UnifiedMode() {
+		// For cgroup v2, use memory.high
+		err = cgroup.WriteCgroupFile(cgroupPath, "", "memory.high", memoryHighStr)
+		if err != nil {
+			return fmt.Errorf("failed to write memory.high: %w", err)
 		}
-		return fmt.Errorf("failed to write memory.high: %w", err)
+		logger.WithField("memory_high", memoryHigh).
+			Info("Successfully set memory.high")
+	} else {
+		// For cgroup v1, use memory.soft_limit_in_bytes
+		err = cgroup.WriteCgroupFile(cgroupPath, "memory", "memory.soft_limit_in_bytes", memoryHighStr)
+		if err != nil {
+			return fmt.Errorf("failed to write memory.soft_limit_in_bytes: %w", err)
+		}
+		logger.WithField("memory_soft_limit", memoryHigh).
+			Info("Successfully set memory.soft_limit_in_bytes")
 	}
 
-	logger.WithField("memory_high", memoryHigh).
-		WithField("is_cgroupv2", cgroups.IsCgroup2UnifiedMode()).
-		Info("Successfully set memory.high")
 	return nil
 }
 
