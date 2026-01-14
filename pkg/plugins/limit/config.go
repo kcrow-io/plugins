@@ -13,7 +13,7 @@ const (
 	// DefaultWatchInterval is the default interval for watching container stats
 	DefaultWatchInterval = 60
 	// DefaultMaxDiskBytes is the default max disk bytes
-	DefaultMaxDiskBytes = 4 * 1024 * 1024 * 1024 // 4GB
+	DefaultMaxDiskBytes = 10 * 1024 * 1024 * 1024 // 10GB
 
 	// DefaultCacheRssRatio is the min cache bytes, will clear when cache > min_cache_bytes.
 	DefaultMinCacheBytes = 512 * 1024 * 1024 // 512 MB
@@ -24,28 +24,28 @@ const (
 type iolimit struct {
 	MaxDiskBytes uint64 `json:"max_disk_bytes,omitempty"`
 	BpsLimit     uint64 `json:"bps_limit,omitempty"`
+	IopsLimit    uint64 `json:"iops_limit,omitempty"`
 }
 
 func DefaultIoLimit() *iolimit {
 	return &iolimit{
-		MaxDiskBytes: 4 * 1024 * 1024 * 1024, // 4GB
-		BpsLimit:     1,                      // 1bps
+		MaxDiskBytes: DefaultMaxDiskBytes, // 10GB
+		BpsLimit:     4194304,             // 4MB/s
+		IopsLimit:    10,                  // 10 IOPS
 	}
 }
 
 func (i *iolimit) Valid() error {
-	if i.MaxDiskBytes == 0 || i.BpsLimit == 0 {
-		return fmt.Errorf("max_disk_bytes must be greater than 0")
-	}
 	return nil
 }
 
 func (i *iolimit) CopyTo(dst *iolimit) {
 	dst.MaxDiskBytes = i.MaxDiskBytes
 	dst.BpsLimit = i.BpsLimit
+	dst.IopsLimit = i.IopsLimit
 }
 func (i *iolimit) String() string {
-	return fmt.Sprintf("max_disk_bytes: %d, bps_limit: %d", i.MaxDiskBytes, i.BpsLimit)
+	return fmt.Sprintf("max_disk_bytes: %d, bps_limit: %d, iops_limit: %d", i.MaxDiskBytes, i.BpsLimit, i.IopsLimit)
 }
 
 type memlimit struct {

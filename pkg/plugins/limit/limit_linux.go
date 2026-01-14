@@ -3,6 +3,7 @@ package limit
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/containerd/containerd/v2/client"
@@ -29,13 +30,19 @@ type Plugin struct {
 	config *Config
 
 	device *DeviceNumber
+
+	// limitedContainers tracks which containers have IO limits applied
+	// key: container ID, value: true if limited
+	limitedContainers map[string]bool
+	mu                sync.RWMutex
 }
 
 // New creates a new io plugin
 func New() *Plugin {
 	return &Plugin{
-		log:    log.G(context.Background()).WithField("plugin", name),
-		config: NewConfig(),
+		log:               log.G(context.Background()).WithField("plugin", name),
+		config:            NewConfig(),
+		limitedContainers: make(map[string]bool),
 	}
 }
 
@@ -91,7 +98,9 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 		p.log.Debugf("Failed to get container info for %s: %v", id, err)
 		return
 	}
-
+	if p.config.Io.MaxDiskBytes == 0 {
+		return
+	}
 	// Only process containers with overlayfs snapshotter
 	if info.Snapshotter != "overlayfs" {
 		return
@@ -110,14 +119,49 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 
 	cgroupPath := spec.Linux.CgroupsPath
 	diskUsage := usage.Size
+	fullID := container.ID()
+
+	// Check current limit status from map
+	p.mu.RLock()
+	hasLimit := p.limitedContainers[fullID]
+	p.mu.RUnlock()
 
 	if diskUsage > int64(p.config.Io.MaxDiskBytes) {
-		// Disk usage exceeds threshold, Apply limit
-		if err := ApplyIOLimit(cgroupPath, p.device, p.config.Io.BpsLimit); err != nil {
-			p.log.Errorf("Failed to apply io limit to container %s (cgroup: %s): %v", id, cgroupPath, err)
-		} else {
-			p.log.Infof("Applied io limit to container %s (cgroup: %s, disk usage: %d bytes > threshold: %d bytes)",
-				id, cgroupPath, diskUsage, p.config.Io.BpsLimit)
+		// Disk usage exceeds threshold
+		if !hasLimit {
+			// Apply limits (both BPS and IOPS if configured)
+			if err := ApplyIOLimit(cgroupPath, p.device, p.config.Io); err != nil {
+				p.log.Errorf("Failed to apply io limit to container %s (cgroup: %s): %v", id, cgroupPath, err)
+			} else {
+				logMsg := fmt.Sprintf("Applied io limit to container %s (cgroup: %s, disk usage: %d bytes > threshold: %d bytes, bps_limit: %d",
+					id, cgroupPath, diskUsage, p.config.Io.MaxDiskBytes, p.config.Io.BpsLimit)
+				if p.config.Io.IopsLimit > 0 {
+					logMsg += fmt.Sprintf(", iops_limit: %d", p.config.Io.IopsLimit)
+				}
+				logMsg += ")"
+				p.log.Info(logMsg)
+
+				// Mark as limited in map
+				p.mu.Lock()
+				p.limitedContainers[fullID] = true
+				p.mu.Unlock()
+			}
+		}
+	} else {
+		// Disk usage is below threshold
+		if hasLimit {
+			// Remove limits
+			if err := ApplyIOLimit(cgroupPath, p.device, nil); err != nil {
+				p.log.Errorf("Failed to remove io limit from container %s (cgroup: %s): %v", id, cgroupPath, err)
+			} else {
+				p.log.Infof("Removed io limit from container %s (cgroup: %s, disk usage: %d bytes < threshold: %d bytes)",
+					id, cgroupPath, diskUsage, p.config.Io.MaxDiskBytes)
+
+				// Remove from map
+				p.mu.Lock()
+				delete(p.limitedContainers, fullID)
+				p.mu.Unlock()
+			}
 		}
 	}
 }
