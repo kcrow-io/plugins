@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/opencontainers/cgroups"
 )
@@ -78,6 +80,65 @@ func GetCgroupFilePath(cgroupPath, subsystem, filename string) (string, error) {
 
 	// For v1: {mountPoint}/{cgroupPath}/{filename}
 	return filepath.Join(mountPoint, normalizedPath, filename), nil
+}
+
+// GetFirstMemory get the first level, usually kubepods
+func GetFirstMemory(cgroupPath string) (uint64, uint64, error) {
+	// Normalize the cgroup path (handle systemd conversion)
+	normalizedPath := NormalizeCgroupPath(cgroupPath)
+
+	kubepods, _, _ := strings.Cut(normalizedPath, "/")
+
+	rootMem := filepath.Join("/sys/fs/cgroup", "memory", kubepods)
+	if cgroups.IsCgroup2UnifiedMode() {
+		// For v2: /sys/fs/cgroup/{cgroupPath}
+		rootMem = filepath.Join("/sys/fs/cgroup", kubepods)
+	}
+	return GetMemoryUsage(rootMem)
+}
+
+// GetMemoryUsage gets the memory usage of a cgroup
+func GetMemoryUsage(cgroupPath string) (usage uint64, limit uint64, err error) {
+	var (
+		usagename = "memory.usage_in_bytes"
+		maxname   = "memory.limit_in_bytes"
+	)
+
+	if cgroups.IsCgroup2UnifiedMode() {
+		usagename = "memory.current"
+		maxname = "memory.max"
+	}
+
+	usagePath := filepath.Join(cgroupPath, usagename)
+	usageData, err := os.ReadFile(usagePath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read usage file %s: %w", usagePath, err)
+	}
+
+	usageStr := strings.TrimSpace(string(usageData))
+	usage, err = strconv.ParseUint(usageStr, 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse usage %s: %w", usageStr, err)
+	}
+
+	limitPath := filepath.Join(cgroupPath, maxname)
+	limitData, err := os.ReadFile(limitPath)
+	if err != nil {
+		return usage, 0, fmt.Errorf("read limit file %s: %w", limitPath, err)
+	}
+
+	limitStr := strings.TrimSpace(string(limitData))
+
+	if limitStr == "max" {
+		return usage, 0, nil
+	}
+
+	limit, err = strconv.ParseUint(limitStr, 10, 64)
+	if err != nil {
+		return usage, 0, fmt.Errorf("parse limit %s: %w", limitStr, err)
+	}
+
+	return usage, limit, nil
 }
 
 // ValidateCgroupPath validates that a cgroup path exists

@@ -51,6 +51,24 @@ func GetSnapshotDeviceNumber(root, snapshotter string) (*DeviceNumber, error) {
 	}, nil
 }
 
+func GetPathUsage(path string) (usage uint64, err error) {
+	var stat syscall.Statfs_t
+
+	err = syscall.Statfs(path, &stat)
+	if err != nil {
+		return 0, err
+	}
+
+	total := stat.Blocks * uint64(stat.Bsize)
+	free := stat.Bfree * uint64(stat.Bsize)
+
+	if total > 0 {
+		return uint64(float64(total-free) / float64(total) * 100), nil
+	}
+
+	return 0, fmt.Errorf("total is zero")
+}
+
 // GetDeviceNumberFromPath gets the device number for any path
 func GetDeviceNumberFromPath(path string) (*DeviceNumber, error) {
 	var stat syscall.Stat_t
