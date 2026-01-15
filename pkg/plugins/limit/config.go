@@ -19,6 +19,7 @@ const (
 	DefaultMinCacheBytes = 512 * 1024 * 1024 // 512 MB
 
 	DefaultCacheRssRatio = 10
+	DefaultUsagePercent  = 80
 )
 
 type iolimit struct {
@@ -49,14 +50,16 @@ func (i *iolimit) String() string {
 }
 
 type memlimit struct {
-	CacheRssRatio float64 `json:"cache-rss-ratio,omitempty"`
-	MinCacheBytes uint64  `json:"min-cache-bytes,omitempty"`
+	PodsUsagePercent uint64  `json:"pods-usage-percent,omitempty"`
+	CacheRssRatio    float64 `json:"cache-rss-ratio,omitempty"`
+	MinCacheBytes    uint64  `json:"min-cache-bytes,omitempty"`
 }
 
 func DefaultMemLimit() *memlimit {
 	return &memlimit{
-		CacheRssRatio: DefaultCacheRssRatio,
-		MinCacheBytes: DefaultMinCacheBytes,
+		PodsUsagePercent: DefaultUsagePercent,
+		CacheRssRatio:    DefaultCacheRssRatio,
+		MinCacheBytes:    DefaultMinCacheBytes,
 	}
 }
 
@@ -68,11 +71,12 @@ func (m *memlimit) Valid() error {
 }
 
 func (m *memlimit) CopyTo(dst *memlimit) {
+	dst.PodsUsagePercent = m.PodsUsagePercent
 	dst.CacheRssRatio = m.CacheRssRatio
 	dst.MinCacheBytes = m.MinCacheBytes
 }
 func (m *memlimit) String() string {
-	return fmt.Sprintf("cache-rss-ratio: %f, min-cache-bytes: %d", m.CacheRssRatio, m.MinCacheBytes)
+	return fmt.Sprintf("pods-usage-percent: %d, cache-rss-ratio: %f, min-cache-bytes: %d", m.PodsUsagePercent, m.CacheRssRatio, m.MinCacheBytes)
 }
 
 // Config represents the iolimit plugin configuration

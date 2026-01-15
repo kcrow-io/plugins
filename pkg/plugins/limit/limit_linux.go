@@ -173,8 +173,19 @@ func (p *Plugin) clearCache(ctx context.Context, id string, container client.Con
 		p.log.Errorf("Failed to get container spec for %s: %v", id, err)
 		return
 	}
-
+	// skip if all-usage-percent not set, which mean no limit
+	if p.config.Memory.PodsUsagePercent == 0 {
+		return
+	}
 	cgroupPath := spec.Linux.CgroupsPath
+	usage, limit, err := cgroup.GetFirstMemory(cgroupPath)
+	if err != nil {
+		p.log.Errorf("Failed to get root memory usage: %v", err)
+		return
+	}
+	if limit != 0 && uint64(float64(usage)/float64(limit)*100) < p.config.Memory.PodsUsagePercent {
+		return
+	}
 
 	statpath, err := cgroup.GetCgroupFilePath(cgroupPath, "memory", "memory.stat")
 	if err != nil {
