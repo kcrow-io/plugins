@@ -35,14 +35,19 @@ This helps prevent containers from consuming excessive disk I/O resources and ma
 5. **Snapshotter Integration**: Reads disk usage from containerd's snapshot service (overlayfs only)
 
 ### Memory Cache Management Flow
-1. **Memory Stats Parsing**: Reads `memory.stat` from container's cgroup
-2. **Ratio Calculation**: Calculates cache/RSS ratio from memory statistics
-   - For cgroup v2: Uses `file` (cache) and `anon` (RSS) keys
+1. **Root Memory Check**: First checks the root-level memory usage (usually kubepods level)
+   - Gets usage and limit from the first cgroup level using `GetFirstMemory()`
+   - If `usage/limit * 100 < pods-usage-percent`, skips cache clearing (no action needed)
+   - This prevents unnecessary cache clearing when overall memory pressure is low
+2. **Memory Stats Parsing**: If root memory exceeds threshold, reads `memory.stat` from container's cgroup
+3. **Ratio Calculation**: Calculates cache/RSS ratio from memory statistics
+   - For cgroup v2: Uses `file` (cache) and `anno` (RSS) keys
    - For cgroup v1: Uses `cache` and `rss` keys
-3. **Threshold Check**: Triggers when BOTH conditions are met:
-   - Cache size > `min_cache_bytes` (default: 512MB)
-   - Cache/RSS ratio > `cache_rss_ratio` (default: 10)
-4. **Cache Clearing**:
+4. **Threshold Check**: Triggers when ALL conditions are met:
+   - Root memory usage/limit ratio > `pods-usage-percent` (default: 80%)
+   - Cache size > `min-cache-bytes` (default: 512MB)
+   - Cache/RSS ratio > `cache-rss-ratio` (default: 10)
+5. **Cache Clearing**:
    - For cgroup v2: Writes cache size to `memory.reclaim` for proactive reclaim
    - For cgroup v1: Writes "1" to `memory.force_empty` to force cache eviction
 
@@ -56,11 +61,13 @@ The plugin accepts JSON configuration with the following options:
   "watch_interval": 60,
   "io": {
     "max_disk_bytes": 4294967296,
-    "bps_limit": 2049
+    "bps_limit": 4194304,
+    "iops_limit": 10
   },
   "memory": {
-    "cache_rss_ratio": 10,
-    "min_cache_bytes": 536870912
+    "pods-usage-percent": 80,
+    "cache-rss-ratio": 10,
+    "min-cache-bytes": 536870912
   }
 }
 ```
@@ -73,18 +80,28 @@ The plugin accepts JSON configuration with the following options:
 - `watch_interval`: Interval in seconds for checking container stats (default: 60 seconds)
 
 #### I/O Limiting Options (`io` section)
-- `max_disk_bytes`: Disk usage threshold in bytes (default: 4GB = 4294967296)
+- `max_disk_bytes`: Disk usage threshold in bytes (default: 10GB = 10737418240)
   - When container disk usage exceeds this, I/O limits are applied
-- `bps_limit`: Write bandwidth limit in bytes per second (default: 2049 bytes/s ≈ 2KB/s)
+  - Set to 0 to disable I/O limiting
+- `bps_limit`: Write bandwidth limit in bytes per second (default: 4MB/s = 4194304)
   - Applied when disk usage exceeds threshold
+- `iops_limit`: Write IOPS (I/O operations per second) limit (default: 10)
+  - Applied when disk usage exceeds threshold
+  - Set to 0 to disable IOPS limiting
 
 #### Memory Cache Options (`memory` section)
-- `cache_rss_ratio`: Minimum cache-to-RSS ratio to trigger cache clearing (default: 10)
+- `pods-usage-percent`: Root-level memory usage percentage threshold (default: 80)
+  - Checks the first cgroup level (usually kubepods) memory usage/limit ratio
+  - If usage/limit * 100 < this value, skips all cache clearing
+  - Set to 0 to disable memory cache management
+  - This is a global gate that prevents cache clearing when overall memory pressure is low
+- `cache-rss-ratio`: Minimum cache-to-RSS ratio to trigger cache clearing (default: 10)
   - Cache clearing triggers when: cache/RSS > this ratio
   - Higher values mean more tolerance for cache
-- `min_cache_bytes`: Minimum cache size in bytes to trigger clearing (default: 512MB = 536870912)
+  - Must be > 3 (validated in config)
+- `min-cache-bytes`: Minimum cache size in bytes to trigger clearing (default: 512MB = 536870912)
   - Prevents clearing cache when it's already small
-  - Both ratio AND size conditions must be met
+  - All three conditions (pods-usage-percent, ratio, AND size) must be met
 
 ## Installation
 
@@ -106,11 +123,13 @@ The plugin accepts JSON configuration with the following options:
      "watch_interval": 60,
      "io": {
        "max_disk_bytes": 4294967296,
-       "bps_limit": 10485760
+       "bps_limit": 10485760,
+       "iops_limit": 100
      },
      "memory": {
-       "cache_rss_ratio": 10,
-       "min_cache_bytes": 536870912
+       "pods-usage-percent": 80,
+       "cache-rss-ratio": 10,
+       "min-cache-bytes": 536870912
      }
    }
    EOF
@@ -132,16 +151,19 @@ Prevent containers from filling up disk and manage memory cache:
   "watch_interval": 30,
   "io": {
     "max_disk_bytes": 2147483648,
-    "bps_limit": 5242880
+    "bps_limit": 5242880,
+    "iops_limit": 50
   },
   "memory": {
-    "cache_rss_ratio": 8,
-    "min_cache_bytes": 268435456
+    "pods-usage-percent": 70,
+    "cache-rss-ratio": 8,
+    "min-cache-bytes": 268435456
   }
 }
 ```
 - Disk threshold: 2GB
-- I/O limit: 5MB/s
+- I/O limit: 5MB/s, 50 IOPS
+- Root memory threshold: 70% (more aggressive)
 - Cache ratio: 8 (more aggressive)
 - Min cache: 256MB
 - Check interval: 30 seconds
@@ -154,16 +176,19 @@ Protect production systems with conservative settings:
   "watch_interval": 60,
   "io": {
     "max_disk_bytes": 10737418240,
-    "bps_limit": 10485760
+    "bps_limit": 10485760,
+    "iops_limit": 100
   },
   "memory": {
-    "cache_rss_ratio": 15,
-    "min_cache_bytes": 1073741824
+    "pods-usage-percent": 85,
+    "cache-rss-ratio": 15,
+    "min-cache-bytes": 1073741824
   }
 }
 ```
 - Disk threshold: 10GB
-- I/O limit: 10MB/s
+- I/O limit: 10MB/s, 100 IOPS
+- Root memory threshold: 85% (more tolerant)
 - Cache ratio: 15 (more tolerant)
 - Min cache: 1GB
 - Check interval: 60 seconds
@@ -176,16 +201,19 @@ Focus on memory cache management:
   "watch_interval": 30,
   "io": {
     "max_disk_bytes": 5368709120,
-    "bps_limit": 10485760
+    "bps_limit": 10485760,
+    "iops_limit": 100
   },
   "memory": {
-    "cache_rss_ratio": 5,
-    "min_cache_bytes": 536870912
+    "pods-usage-percent": 75,
+    "cache-rss-ratio": 5,
+    "min-cache-bytes": 536870912
   }
 }
 ```
 - Disk threshold: 5GB
-- I/O limit: 10MB/s
+- I/O limit: 10MB/s, 100 IOPS
+- Root memory threshold: 75%
 - Cache ratio: 5 (very aggressive cache clearing)
 - Min cache: 512MB
 - Check interval: 30 seconds
@@ -238,14 +266,17 @@ sudo journalctl -u containerd | grep "memory exceeds"
    CONTAINER_ID=$(sudo ctr containers list | grep your-container | awk '{print $1}')
    CGROUP_PATH=$(sudo ctr containers info $CONTAINER_ID | grep CgroupsPath | cut -d'"' -f4)
 
-   # Check io.max
+   # Check io.max (shows both BPS and IOPS limits)
    sudo cat /sys/fs/cgroup${CGROUP_PATH}/io.max
    ```
 
 4. **Check I/O Limits** (cgroup v1):
    ```bash
-   # Check blkio throttle
+   # Check blkio throttle for BPS
    sudo cat /sys/fs/cgroup/blkio${CGROUP_PATH}/blkio.throttle.write_bps_device
+
+   # Check blkio throttle for IOPS
+   sudo cat /sys/fs/cgroup/blkio${CGROUP_PATH}/blkio.throttle.write_iops_device
    ```
 
 ### Verify Memory Cache Management
@@ -253,7 +284,7 @@ sudo journalctl -u containerd | grep "memory exceeds"
 1. **Check Memory Stats**:
    ```bash
    # For cgroup v2
-   sudo cat /sys/fs/cgroup${CGROUP_PATH}/memory.stat | grep -E "file|anon"
+   sudo cat /sys/fs/cgroup${CGROUP_PATH}/memory.stat | grep -E "file|anno"
 
    # For cgroup v1
    sudo cat /sys/fs/cgroup/memory${CGROUP_PATH}/memory.stat | grep -E "cache|rss"
@@ -302,10 +333,12 @@ sudo journalctl -u containerd | grep "memory exceeds"
 - **Single Device**: Assumes all containers use the same block device
 
 ### Memory Cache Management
-- **No Removal**: Limits are applied but not automatically removed when conditions improve
+- **No Automatic Removal**: Cache clearing is triggered but limits are not automatically removed
 - **Periodic Checks**: Uses polling, not real-time monitoring
 - **Cache-only**: Only manages page cache, not other memory types
 - **Ratio-based**: May not be optimal for all workload patterns
+- **Root-level Gating**: Requires root-level memory pressure before checking individual containers
+- **Three-condition Logic**: All three conditions (root usage, cache size, ratio) must be met
 
 ### General
 - **Polling-based**: Both features use periodic polling (watch_interval)
@@ -337,14 +370,19 @@ sudo journalctl -u containerd | grep "memory exceeds"
 #### Memory Cache Issues
 
 1. **Cache Not Clearing**:
-   - Check if both ratio AND size thresholds are met
+   - Check if ALL three conditions are met:
+     - Root memory usage/limit ratio > `pods-usage-percent`
+     - Cache size > `min-cache-bytes`
+     - Cache/RSS ratio > `cache-rss-ratio`
    - Verify memory.stat is readable
    - Check for permission errors in logs
    - Ensure memory.reclaim (v2) or memory.force_empty (v1) is available
+   - Check if `pods-usage-percent` is set to 0 (disables feature)
 
 2. **Excessive Cache Clearing**:
-   - Increase `cache_rss_ratio` to be more tolerant
-   - Increase `min_cache_bytes` to avoid clearing small caches
+   - Increase `pods-usage-percent` to raise the root memory threshold
+   - Increase `cache-rss-ratio` to be more tolerant
+   - Increase `min-cache-bytes` to avoid clearing small caches
    - Increase `watch_interval` to reduce check frequency
 
 3. **Memory Stats Parsing Errors**:
@@ -415,7 +453,7 @@ sudo journalctl -u containerd | grep "containerd.*root"
 ### Memory Statistics Keys
 - **Cgroup v2**:
   - Cache: `file` key in memory.stat
-  - RSS: `anon` key in memory.stat
+  - RSS: `anno` key in memory.stat
 - **Cgroup v1**:
   - Cache: `cache` key in memory.stat
   - RSS: `rss` key in memory.stat
@@ -431,9 +469,10 @@ Potential improvements for future versions:
 - Read bandwidth limiting
 - Per-namespace or per-pod configuration
 - Real-time monitoring instead of polling
-- IOPS (I/O operations per second) limiting
 - Configurable limit escalation strategies
-- Automatic limit removal when conditions improve
+- Automatic I/O limit removal when disk usage drops
 - More sophisticated memory management policies
 - Integration with container resource requests/limits
 - Metrics export for monitoring systems
+- Support for read IOPS limiting
+- Configurable root-level memory path (not just first level)

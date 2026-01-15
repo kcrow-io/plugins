@@ -14,7 +14,7 @@ This project provides common NRI plugins to extend containerd's container runtim
    Automatically sets `memory.high` to a percentage of container's memory limit for better memory management
 
 4. [limit plugin](./docs/limit.md)
-   Monitors container disk usage and automatically applies I/O bandwidth limits when disk usage exceeds a configured threshold, clear cache when container cache usage exceeds a configured threshold
+   Monitors container disk usage and automatically applies I/O bandwidth limits when disk usage exceeds a configured threshold. Also monitors memory cache/RSS ratio and clears cache when root-level memory pressure is detected and cache exceeds configured thresholds.
 
 ## Installation
 
@@ -42,12 +42,14 @@ Each plugin requires a configuration file in JSON format, placed in `/opt/nri/co
 {
   "containerd_config_path": "/etc/containerd/config.toml",
   "io" : {
-    "max_disk_bytes": 4294967296, 
-    "bps_limit": 1
+    "max_disk_bytes": 4294967296,
+    "bps_limit": 4194304,
+    "iops_limit": 10
   },
   "memory": {
+    "pods-usage-percent": 80,
     "cache-rss-ratio": 10,
-    "min-cache-bytes": 104857600 
+    "min-cache-bytes": 104857600
   },
   "watch_interval": 60
 }
