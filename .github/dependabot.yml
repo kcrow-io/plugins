@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # Enable version updates for Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    assignees:
+      - "yylt"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    # Group updates for better management
+    groups:
+      containerd:
+        patterns:
+          - "github.com/containerd/*"
+      kubernetes:
+        patterns:
+          - "k8s.io/*"
+      golang:
+        patterns:
+          - "golang.org/*"
+      grpc:
+        patterns:
+          - "google.golang.org/*"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    assignees:
+      - "yylt"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
