@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 )
 
 // Task represents a unit of work to be executed
@@ -15,6 +16,7 @@ type WorkerPool struct {
 	wg        sync.WaitGroup
 	ctx       context.Context
 	cancel    context.CancelFunc
+	stopped   atomic.Bool
 }
 
 // New creates a new worker pool with the specified number of workers
@@ -63,6 +65,10 @@ func (p *WorkerPool) worker() {
 // Submit submits a task to the pool
 // Returns false if the pool is closed or context is cancelled
 func (p *WorkerPool) Submit(task Task) bool {
+	if p.stopped.Load() {
+		return false
+	}
+
 	select {
 	case p.taskQueue <- task:
 		return true
@@ -86,6 +92,10 @@ func (p *WorkerPool) SubmitWait(task Task) {
 
 // Stop stops the worker pool and waits for all workers to finish
 func (p *WorkerPool) Stop() {
+	if !p.stopped.CompareAndSwap(false, true) {
+		return // Already stopped
+	}
+
 	p.cancel() // Cancel context first to prevent new submissions
 	close(p.taskQueue)
 	p.wg.Wait()
@@ -93,6 +103,10 @@ func (p *WorkerPool) Stop() {
 
 // StopGracefully stops accepting new tasks and waits for existing tasks to complete
 func (p *WorkerPool) StopGracefully() {
+	if !p.stopped.CompareAndSwap(false, true) {
+		return // Already stopped
+	}
+
 	p.cancel() // Cancel context first
 	close(p.taskQueue)
 	p.wg.Wait()
