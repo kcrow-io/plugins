@@ -1,7 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 This is a Go-based NRI (Node Resource Interface) plugins collection for extending containerd's container runtime capabilities. The project provides specialized plugins that can modify container behavior at runtime through the containerd NRI framework.
