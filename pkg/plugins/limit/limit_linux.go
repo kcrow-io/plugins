@@ -80,11 +80,79 @@ func (p *Plugin) Configure(ctx context.Context, config, runtime, version string)
 
 	p.log.Infof("Detected device number: %s", device.String())
 	p.device = device
-	// Create and start watcher
-	watcher := containerd.NewWatcher(p.config.cntrd, &containerd.Config{
-		WatchInterval: time.Duration(p.config.WatchInterval) * time.Second,
-		Containerfn:   p.checkContainer,
+
+	// Create and start watcher with worker pool
+	watcher, err := containerd.NewWatcher(p.config.cntrd, &containerd.Config{
+		WatchInterval:  time.Duration(p.config.WatchInterval) * time.Second,
+		WorkerPoolSize: 4, // Use 4 workers for parallel processing
 	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to create watcher: %w", err)
+	}
+
+	// Subscribe to blkio limit checking
+	watcher.Subscribe("blkio-limiter", func(ctx context.Context, container client.Container) bool {
+		id := container.ID()
+		if len(id) > 6 {
+			id = id[:6]
+		}
+		if p.config.Io.MaxDiskBytes == 0 {
+			return false
+		}
+		// Check if this is a container (not sandbox)
+		ok, err := isRunningContainer(ctx, container)
+		if err != nil {
+			p.log.Debugf("Failed to get container for %s: %v", id, err)
+			return true // continue
+		}
+		if !ok {
+			return true // continue
+		}
+		p.limitblkio(ctx, id, container)
+		return true // continue to next container
+	})
+
+	// Subscribe to cache clearing
+	watcher.Subscribe("cache-clearer", func(ctx context.Context, container client.Container) bool {
+		id := container.ID()
+		if len(id) > 6 {
+			id = id[:6]
+		}
+		// skip if all-usage-percent not set, which mean no limit
+		if p.config.Memory.PodsUsagePercent == 0 {
+			return false
+		}
+		// Check if this is a container (not sandbox)
+		ok, err := isRunningContainer(ctx, container)
+		if err != nil {
+			p.log.Debugf("Failed to get container info for %s: %v", id, err)
+			return true // continue
+		}
+		if !ok {
+			return true // continue
+		}
+		// check pods memory usage
+		spec, err := container.Spec(ctx)
+		if err != nil {
+			p.log.Errorf("Failed to get container spec for %s: %v", id, err)
+			return true // continue
+		}
+
+		cgroupPath := spec.Linux.CgroupsPath
+		usage, limit, err := cgroup.GetFirstMemory(cgroupPath)
+		if err != nil {
+			p.log.Errorf("Failed to get root memory usage: %v", err)
+			return true // continue
+		}
+		// skip if allpods usage not exceeded
+		if limit != 0 && uint64(float64(usage)/float64(limit)*100) < p.config.Memory.PodsUsagePercent {
+			return false
+		}
+
+		p.clearCache(ctx, id, cgroupPath)
+		return true // continue to next container
+	})
+
 	watcher.Start()
 
 	p.log.Info("Plugin configured successfully")
@@ -96,9 +164,6 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 	info, err := container.Info(ctx)
 	if err != nil {
 		p.log.Debugf("Failed to get container info for %s: %v", id, err)
-		return
-	}
-	if p.config.Io.MaxDiskBytes == 0 {
 		return
 	}
 	// Only process containers with overlayfs snapshotter
@@ -167,26 +232,7 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 }
 
 // checks a single container and clear cache
-func (p *Plugin) clearCache(ctx context.Context, id string, container client.Container) {
-	spec, err := container.Spec(ctx)
-	if err != nil {
-		p.log.Errorf("Failed to get container spec for %s: %v", id, err)
-		return
-	}
-	// skip if all-usage-percent not set, which mean no limit
-	if p.config.Memory.PodsUsagePercent == 0 {
-		return
-	}
-	cgroupPath := spec.Linux.CgroupsPath
-	usage, limit, err := cgroup.GetFirstMemory(cgroupPath)
-	if err != nil {
-		p.log.Errorf("Failed to get root memory usage: %v", err)
-		return
-	}
-	if limit != 0 && uint64(float64(usage)/float64(limit)*100) < p.config.Memory.PodsUsagePercent {
-		return
-	}
-
+func (p *Plugin) clearCache(ctx context.Context, id string, cgroupPath string) {
 	statpath, err := cgroup.GetCgroupFilePath(cgroupPath, "memory", "memory.stat")
 	if err != nil {
 		return
@@ -200,29 +246,31 @@ func (p *Plugin) clearCache(ctx context.Context, id string, container client.Con
 		// Memory usage exceeds threshold, Apply limit
 		p.log.Infof("Container id %s memory exceeds, %s", id, memstat)
 		if err := ApplyCleanCache(cgroupPath, memstat.cache); err != nil {
-			p.log.Errorf("Failed to clear cache to container %s (cgroup: %s): %v", spec.Hostname, cgroupPath, err)
+			p.log.Errorf("Failed to clear cache to container %s (cgroup: %s): %v", id, cgroupPath, err)
 		}
 	}
 }
 
-// checkContainer checks a single container and applies limit
-func (p *Plugin) checkContainer(ctx context.Context, container client.Container) {
-	id := container.ID()
-	if len(id) > 6 {
-		id = id[:6]
-	}
-	info, err := container.Info(ctx)
-	if err != nil {
-		p.log.Errorf("Failed to get container info for %s: %v", id, err)
-		return
-	}
-	if len(info.Labels) == 0 || info.Labels[containerdKindKey] != containerKindValue {
-		return
-	}
-	p.limitblkio(ctx, id, container)
-	p.clearCache(ctx, id, container)
-}
-
 func (p *Plugin) CreateContainer(ctx context.Context, pod *api.PodSandbox, container *api.Container) (*api.ContainerAdjustment, []*api.ContainerUpdate, error) {
 	return &api.ContainerAdjustment{}, nil, nil
+}
+
+func isRunningContainer(ctx context.Context, container client.Container) (bool, error) {
+	// Check if this is a container (not sandbox)
+	info, err := container.Info(ctx)
+	if err != nil {
+		return false, err
+	}
+	if len(info.Labels) == 0 || info.Labels[containerdKindKey] != containerKindValue {
+		return false, nil
+	}
+	task, err := container.Task(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	status, err := task.Status(ctx)
+	if err != nil {
+		return false, err
+	}
+	return status.Status == client.Running, nil
 }

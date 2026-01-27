@@ -13,6 +13,8 @@ require (
 	github.com/opencontainers/runtime-spec v1.3.0
 	github.com/sirupsen/logrus v1.9.4
 	golang.org/x/vuln v1.1.4
+	google.golang.org/grpc v1.78.0
+	k8s.io/cri-api v0.35.0
 )
 
 require (
@@ -259,7 +261,6 @@ require (
 	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/tools v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260114163908-3f89685c29c3 // indirect
-	google.golang.org/grpc v1.78.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
