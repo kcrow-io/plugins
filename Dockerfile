@@ -11,7 +11,7 @@ ENV GOPROXY=https://goproxy.cn,direct
 
 RUN BUILD_PLATFORMS=$TARGETPLATFORM make build
 
-FROM gcr.io/distroless/static:nonroot
+FROM busybox:1.36.1
 
 ARG TARGETPLATFORM
 

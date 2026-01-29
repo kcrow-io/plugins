@@ -1,0 +1,45 @@
+name: e2e
+
+on:
+  push:
+    branches: [ "feature/*" ]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    permissions:
+      contents: read
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install kubectl
+        run: |
+          set -euo pipefail
+          ARCH=amd64
+          VERSION=v1.30.2
+          curl -sSL -o kubectl https://dl.k8s.io/release/${VERSION}/bin/linux/${ARCH}/kubectl
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+      - name: Install kind
+        run: |
+          set -euo pipefail
+          KIND_VERSION=v0.31.0
+          curl -sSL -o kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64
+          sudo install -o root -g root -m 0755 kind /usr/local/bin/kind
+
+      - name: Run limit end-to-end tests
+        env:
+          GOCACHE: /tmp/go-build
+        run: make e2e
+
+      - name: Delete cluster
+        run: /usr/local/bin/kind delete cluster
+
+
