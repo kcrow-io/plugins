@@ -13,7 +13,7 @@ require (
 	github.com/opencontainers/runtime-spec v1.3.0
 	github.com/sirupsen/logrus v1.9.4
 	golang.org/x/vuln v1.1.4
-	google.golang.org/grpc v1.79.1
+	google.golang.org/grpc v1.79.2
 	k8s.io/cri-api v0.35.2
 )
 
