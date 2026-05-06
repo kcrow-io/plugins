@@ -1,6 +1,6 @@
 module github.com/kcrow-io/plugins
 
-go 1.25.0
+go 1.26
 
 exclude google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 

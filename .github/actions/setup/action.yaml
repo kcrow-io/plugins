@@ -1,0 +1,13 @@
+name: "Setup"
+description: "install dependencies"
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-qemu-action@v3
+      with:
+        platforms: amd64,arm64
+    - uses: docker/setup-buildx-action@v3
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache: true
