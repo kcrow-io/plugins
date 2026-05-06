@@ -99,5 +99,7 @@ test/e2edebugLog.txt
 .plan*
 .claude*
 
+plans/
+
 out/
 bin/

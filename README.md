@@ -211,6 +211,25 @@ sudo ctr run --rm --runtime io.containerd.runc.v2 \
   docker.io/library/alpine:latest test
 ```
 
+## Integration Tests
+
+The `integration/` suite provisions a disposable KinD cluster, installs the limit plugin, and runs stress workloads to ensure disk I/O throttling and cache eviction paths behave as expected.
+
+**Prerequisites**
+
+- Docker engine (with BuildKit enabled)
+- [kind](https://kind.sigs.k8s.io/) and `kubectl` binaries in `PATH`
+
+**Run locally**
+
+```bash
+make e2e
+```
+
+The tests will build a local limit plugin image, load it into KinD, and assert on plugin logs for I/O throttling (`Applied io limit`) and memory cache clearing (`memory exceeds`). Use `GOFLAGS='-count=1' make e2e` when iterating to avoid test caching.
+
+These checks also run in CI via `.github/workflows/e2e.yml`.
+
 ## Dependency Management
 
 This project uses automated dependency management through GitHub Actions and Dependabot to keep dependencies up-to-date and secure.

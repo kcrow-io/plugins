@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -14,52 +14,42 @@ env:
   ONLINE_REGISTER_USER: ${{ github.actor }}
   ONLINE_REGISTER_PASSWORD: ${{ secrets.PACKAGE_TOKEN }}
 
-
 jobs:
   release:
     if: github.repository == 'kcrow-io/plugins'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
-    - uses: actions/setup-go@v6
-      with:
-        go-version: '1.25'
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      - name: Login to online register
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.ONLINE_REGISTER_USER }}
+          password: ${{ env.ONLINE_REGISTER_PASSWORD }}
+          registry: ${{ env.ONLINE_REGISTER }}
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v4
+      - name: Build and Push Image
+        uses: docker/build-push-action@v6
+        id: docker_build_release
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          provenance: false
+          platforms: ${{ env.BUILD_PLATFORM }}
+          tags: |
+            ${{ env.ONLINE_REGISTER }}/${{ github.repository }}:${{ github.ref_name }},
+            ${{ env.ONLINE_REGISTER }}/${{ github.repository }}:latest
+          build-args: |
+            GIT_COMMIT_VERSION=${{ env.commitver }}
+            GIT_COMMIT_TIME=${{ env.committime }}
+            VERSION=${{ github.ref_name }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
-
-    - name: Login to online register
-      uses: docker/login-action@v4
-      with:
-        username: ${{ env.ONLINE_REGISTER_USER }}
-        password: ${{ env.ONLINE_REGISTER_PASSWORD }}
-        registry: ${{ env.ONLINE_REGISTER }}
-
-    - name: Build and Push Image
-      uses: docker/build-push-action@v7
-      id: docker_build_release
-      with:
-        context: .
-        file: Dockerfile
-        push: true
-        provenance: false
-        platforms: ${{ env.BUILD_PLATFORM }}
-        tags: |
-          ${{ env.ONLINE_REGISTER }}/${{ github.repository }}:${{ github.ref_name }},
-          ${{ env.ONLINE_REGISTER }}/${{ github.repository }}:latest
-        build-args: |
-          GIT_COMMIT_VERSION=${{ env.commitver }}
-          GIT_COMMIT_TIME=${{ env.committime }}
-          VERSION=${{ github.ref_name }}
-
-    - name: Run GoReleaser
-      uses: goreleaser/goreleaser-action@v7
-      with:
-        distribution: goreleaser
-        version: '~> v2'
-        args: release --clean
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

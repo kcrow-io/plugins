@@ -62,3 +62,7 @@ test: ## Runs all tests
 	@go test $(ARGS) ./...
 
 ci: lint test govulncheck ## Executes vulnerability scan, lint, test and generates reports
+
+.PHONY: e2e
+e2e: ## Runs KinD-based end-to-end tests (requires docker, kind, kubectl)
+	@go test -v -tags e2e ./integration/...
