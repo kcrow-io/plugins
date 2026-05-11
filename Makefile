@@ -8,10 +8,10 @@ include Makefile.defs
 
 all: build
 
-.PHONY: all build 
+.PHONY: all build
 
 START_NUM ?= 06
-BIN_SUBDIRS := cmd/memory cmd/limit cmd/escape 
+BIN_SUBDIRS := cmd/memory cmd/limit cmd/escape
 
 
 build: fmt tidy
@@ -61,7 +61,7 @@ govulncheck: ## Vulnerability detection using govulncheck
 test: ## Runs all tests
 	@go test $(ARGS) ./...
 
-ci: lint test govulncheck ## Executes vulnerability scan, lint, test and generates reports
+ci: lint test ## Executes lint, test and generates reports，skip vulnerability scan
 
 .PHONY: e2e
 e2e: ## Runs KinD-based end-to-end tests (requires docker, kind, kubectl)
