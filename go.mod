@@ -14,7 +14,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	golang.org/x/vuln v1.3.0
 	google.golang.org/grpc v1.81.0
-	k8s.io/cri-api v0.36.0
+	k8s.io/cri-api v0.36.1
 )
 
 require (

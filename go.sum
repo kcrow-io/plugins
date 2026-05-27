@@ -757,8 +757,8 @@ honnef.co/go/tools v0.0.0-20190102054323-c2f93a96b099/go.mod h1:rf3lG4BRIbNafJWh
 honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
 honnef.co/go/tools v0.7.0 h1:w6WUp1VbkqPEgLz4rkBzH/CSU6HkoqNLp6GstyTx3lU=
 honnef.co/go/tools v0.7.0/go.mod h1:pm29oPxeP3P82ISxZDgIYeOaf9ta6Pi0EWvCFoLG2vc=
-k8s.io/cri-api v0.36.0 h1:DSuUPB3HjUPIFBXmXIWbooJlr1euKXzPSdhpeCRgLFA=
-k8s.io/cri-api v0.36.0/go.mod h1:1gMX7udEAiRCWGS4uxscdbxq6vufwhZt38Ri+XH6P00=
+k8s.io/cri-api v0.36.1 h1:g4vRySdoN5G+FMXC1jfGdUyynsHy2qaHZKZhCXZuEmg=
+k8s.io/cri-api v0.36.1/go.mod h1:1gMX7udEAiRCWGS4uxscdbxq6vufwhZt38Ri+XH6P00=
 mvdan.cc/gofumpt v0.9.2 h1:zsEMWL8SVKGHNztrx6uZrXdp7AX8r421Vvp23sz7ik4=
 mvdan.cc/gofumpt v0.9.2/go.mod h1:iB7Hn+ai8lPvofHd9ZFGVg2GOr8sBUw1QUWjNbmIL/s=
 mvdan.cc/unparam v0.0.0-20251027182757-5beb8c8f8f15 h1:ssMzja7PDPJV8FStj7hq9IKiuiKhgz9ErWw+m68e7DI=
