@@ -75,7 +75,7 @@ func ConvertSystemdPathToFs(cgroupPath string) string {
 func NormalizeCgroupPath(cgroupPath string) string {
 	// If it's a systemd path, convert it
 	if IsSystemdDriver(cgroupPath) {
-		return ConvertSystemdPathToFs(cgroupPath)
+		cgroupPath = ConvertSystemdPathToFs(cgroupPath)
 	}
 	// Otherwise just remove leading slash
 	return strings.TrimPrefix(cgroupPath, "/")

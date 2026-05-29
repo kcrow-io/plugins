@@ -87,12 +87,23 @@ func GetFirstMemory(cgroupPath string) (uint64, uint64, error) {
 	// Normalize the cgroup path (handle systemd conversion)
 	normalizedPath := NormalizeCgroupPath(cgroupPath)
 
+	if normalizedPath == "" {
+		return 0, 0, fmt.Errorf("cgroup path is empty")
+	}
+
 	kubepods, _, _ := strings.Cut(normalizedPath, "/")
 
-	rootMem := filepath.Join("/sys/fs/cgroup", "memory", kubepods)
+	if kubepods == "" {
+		return 0, 0, fmt.Errorf("could not extract first level from cgroup path: %s", normalizedPath)
+	}
+
+	var rootMem string
 	if cgroups.IsCgroup2UnifiedMode() {
 		// For v2: /sys/fs/cgroup/{cgroupPath}
 		rootMem = filepath.Join("/sys/fs/cgroup", kubepods)
+	} else {
+		// For v1: /sys/fs/cgroup/memory/{cgroupPath}
+		rootMem = filepath.Join("/sys/fs/cgroup", "memory", kubepods)
 	}
 	return GetMemoryUsage(rootMem)
 }
