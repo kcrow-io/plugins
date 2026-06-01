@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	v2RssKey   = "anno"
+	v2RssKey   = "anon"
 	v2CacheKey = "file"
 
 	v1RssKey   = "rss"
