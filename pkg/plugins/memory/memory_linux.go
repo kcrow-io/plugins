@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/containerd/nri/pkg/api"
 	"github.com/containerd/nri/pkg/stub"
@@ -33,7 +35,8 @@ type Config struct {
 // Plugin implements the memory management NRI plugin
 type Plugin struct {
 	stub.Stub
-	config *Config
+	config              *Config
+	parentMemoryHighSet bool // tracks if kubepods.slice/memory.high has been set
 }
 
 // New creates a new memory plugin instance
@@ -102,7 +105,9 @@ func (p *Plugin) Configure(ctx context.Context, config, runtime, version string)
 
 // StartContainer handles container start events and sets memory.high
 func (p *Plugin) StartContainer(ctx context.Context, pod *api.PodSandbox, container *api.Container) error {
-	logger := log.G(ctx).WithField(plugins.FieldName, PluginName)
+	logger := log.G(ctx).WithField(plugins.FieldName, PluginName).
+		WithField("container_name", container.Name).
+		WithField("pod_namespace", pod.Namespace)
 
 	if p.config.Disabled {
 		return nil
@@ -110,7 +115,7 @@ func (p *Plugin) StartContainer(ctx context.Context, pod *api.PodSandbox, contai
 
 	// Check if we should process this namespace
 	if !p.shouldProcessNamespace(pod.Namespace) {
-		logger.WithField("namespace", pod.Namespace).Debug("Skipping namespace")
+		logger.Debug("Skipping namespace")
 		return nil
 	}
 
@@ -139,12 +144,21 @@ func (p *Plugin) StartContainer(ctx context.Context, pod *api.PodSandbox, contai
 		logger.WithError(err).Warningf("Failed to set memoryHigh")
 	}
 
+	// Set kubepods memory.high/soft_limit on first container start
+	if !p.parentMemoryHighSet {
+		if err := p.setParentMemoryHigh(ctx, container); err != nil {
+			logger.WithError(err).Warningf("Failed to set kubepods memory limit")
+		}
+	}
+
 	return nil
 }
 
 // setMemoryHigh sets memory.high (v2) or memory.soft_limit_in_bytes (v1)
 func (p *Plugin) setMemoryHigh(ctx context.Context, container *api.Container, memoryHigh int64) error {
-	logger := log.G(ctx).WithField(plugins.FieldName, PluginName)
+	logger := log.G(ctx).WithField(plugins.FieldName, PluginName).
+		WithField("container_id", container.Id).
+		WithField("container_name", container.Name)
 
 	// Get container cgroup path
 	if container.Linux == nil || container.Linux.CgroupsPath == "" {
@@ -175,6 +189,105 @@ func (p *Plugin) setMemoryHigh(ctx context.Context, container *api.Container, me
 		logger.WithField("memory_soft_limit", memoryHigh).
 			Info("Successfully set memory.soft_limit_in_bytes")
 	}
+
+	return nil
+}
+
+// setParentMemoryHigh sets memory.high (v2) or memory.soft_limit_in_bytes (v1) for kubepods
+// This is only called once (on first container start) when set-parent-memory-high is enabled
+func (p *Plugin) setParentMemoryHigh(ctx context.Context, container *api.Container) error {
+	logger := log.G(ctx).WithField(plugins.FieldName, PluginName)
+
+	if container.Linux == nil || container.Linux.CgroupsPath == "" {
+		return fmt.Errorf("container has no cgroup path")
+	}
+
+	cgroupPath := container.Linux.CgroupsPath
+	normalizedPath := cgroup.NormalizeCgroupPath(cgroupPath)
+
+	if normalizedPath == "" {
+		return fmt.Errorf("cgroup path is empty")
+	}
+
+	// Extract kubepods path (first level)
+	kubepods, _, _ := strings.Cut(normalizedPath, "/")
+	if kubepods == "" {
+		return fmt.Errorf("could not extract kubepods path from: %s", normalizedPath)
+	}
+
+	logger.WithField("kubepods_path", kubepods).Debug("Found kubepods cgroup path")
+
+	var (
+		memoryLimitPath  string
+		memoryLimitFile  string
+		memoryTargetFile string
+	)
+
+	if cgroups.IsCgroup2UnifiedMode() {
+		// cgroup v2 paths
+		memoryLimitPath = fmt.Sprintf("/sys/fs/cgroup/%s/memory.max", kubepods)
+		memoryLimitFile = "memory.max"
+		memoryTargetFile = "memory.high"
+	} else {
+		// cgroup v1 paths
+		memoryLimitPath = fmt.Sprintf("/sys/fs/cgroup/memory/%s/memory.limit_in_bytes", kubepods)
+		memoryLimitFile = "memory.limit_in_bytes"
+		memoryTargetFile = "memory.soft_limit_in_bytes"
+	}
+
+	// Read memory limit from kubepods
+	data, err := os.ReadFile(memoryLimitPath)
+	if err != nil {
+		return fmt.Errorf("failed to read %s from %s: %w", memoryLimitFile, kubepods, err)
+	}
+
+	memoryLimitStr := strings.TrimSpace(string(data))
+
+	// Handle "max" value (v2) or very large values indicating unlimited
+	if memoryLimitStr == "max" {
+		logger.Infof("kubepods %s is 'max' (unlimited), skipping %s setting", memoryLimitFile, memoryTargetFile)
+		return nil
+	}
+
+	memoryLimit, err := strconv.ParseInt(memoryLimitStr, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse %s value '%s': %w", memoryLimitFile, memoryLimitStr, err)
+	}
+
+	// Calculate target value based on ratio, with max reduction of 200MB
+	memoryTarget := int64(float64(memoryLimit) * p.config.HighRatio)
+	maxReduction := int64(200 * 1024 * 1024) // 200MB
+	if memoryLimit-memoryTarget > maxReduction {
+		memoryTarget = memoryLimit - maxReduction
+	}
+	if memoryTarget < 0 {
+		logger.WithField(memoryLimitFile, memoryLimit).
+			Warnf("kubepods high memory(%d) too low, skipping %s setting", memoryTarget, memoryTargetFile)
+		p.parentMemoryHighSet = true
+		return nil
+	}
+
+	logger.WithField(memoryLimitFile, memoryLimit).
+		WithField(memoryTargetFile, memoryTarget).
+		WithField("high_ratio", p.config.HighRatio).
+		Infof("Setting kubepods %s", memoryTargetFile)
+
+	// Write to kubepods
+	memoryTargetStr := strconv.FormatInt(memoryTarget, 10)
+	var parentPath string
+	if cgroups.IsCgroup2UnifiedMode() {
+		parentPath = fmt.Sprintf("/sys/fs/cgroup/%s/%s", kubepods, memoryTargetFile)
+	} else {
+		parentPath = fmt.Sprintf("/sys/fs/cgroup/memory/%s/%s", kubepods, memoryTargetFile)
+	}
+
+	if err := os.WriteFile(parentPath, []byte(memoryTargetStr), 0644); err != nil {
+		return fmt.Errorf("failed to write %s to %s: %w", memoryTargetFile, parentPath, err)
+	}
+
+	// Mark as set
+	p.parentMemoryHighSet = true
+	logger.Infof("Successfully set kubepods %s", memoryTargetFile)
 
 	return nil
 }

@@ -131,6 +131,16 @@ func (p *Plugin) Configure(ctx context.Context, config, runtime, version string)
 		if !ok {
 			return true // continue
 		}
+
+		// Get container info for labels
+		info, err := container.Info(ctx)
+		if err != nil {
+			p.log.Debugf("Failed to get container info for %s: %v", id, err)
+			return true // continue
+		}
+		containerName := info.Labels["io.cri-containerd.name"]
+		podNamespace := info.Labels["io.kubernetes.pod.namespace"]
+
 		// check pods memory usage
 		spec, err := container.Spec(ctx)
 		if err != nil {
@@ -149,7 +159,7 @@ func (p *Plugin) Configure(ctx context.Context, config, runtime, version string)
 			return false
 		}
 
-		p.clearCache(ctx, id, cgroupPath)
+		p.clearCache(ctx, id, cgroupPath, containerName, podNamespace)
 		return true // continue to next container
 	})
 
@@ -170,6 +180,11 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 	if info.Snapshotter != "overlayfs" {
 		return
 	}
+
+	// Extract container name and pod namespace from labels
+	containerName := info.Labels["io.cri-containerd.name"]
+	podNamespace := info.Labels["io.kubernetes.pod.namespace"]
+
 	usage, err := p.config.cntrd.SnapshotService(info.Snapshotter).Usage(ctx, info.SnapshotKey)
 	if err != nil {
 		p.log.Debugf("Failed to get snapshot usage for %s: %v", id, err)
@@ -196,7 +211,8 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 		if !hasLimit {
 			// Apply limits (both BPS and IOPS if configured)
 			if err := ApplyIOLimit(cgroupPath, p.device, p.config.Io); err != nil {
-				p.log.Errorf("Failed to apply io limit to container %s (cgroup: %s): %v", id, cgroupPath, err)
+				p.log.WithField("container_name", containerName).WithField("pod_namespace", podNamespace).
+					Errorf("Failed to apply io limit to container %s (cgroup: %s): %v", id, cgroupPath, err)
 			} else {
 				logMsg := fmt.Sprintf("Applied io limit to container %s (cgroup: %s, disk usage: %d bytes > threshold: %d bytes, bps_limit: %d",
 					id, cgroupPath, diskUsage, p.config.Io.MaxDiskBytes, p.config.Io.BpsLimit)
@@ -204,7 +220,7 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 					logMsg += fmt.Sprintf(", iops_limit: %d", p.config.Io.IopsLimit)
 				}
 				logMsg += ")"
-				p.log.Info(logMsg)
+				p.log.WithField("container_name", containerName).WithField("pod_namespace", podNamespace).Info(logMsg)
 
 				// Mark as limited in map
 				p.mu.Lock()
@@ -217,10 +233,12 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 		if hasLimit {
 			// Remove limits
 			if err := ApplyIOLimit(cgroupPath, p.device, nil); err != nil {
-				p.log.Errorf("Failed to remove io limit from container %s (cgroup: %s): %v", id, cgroupPath, err)
+				p.log.WithField("container_name", containerName).WithField("pod_namespace", podNamespace).
+					Errorf("Failed to remove io limit from container %s (cgroup: %s): %v", id, cgroupPath, err)
 			} else {
-				p.log.Infof("Removed io limit from container %s (cgroup: %s, disk usage: %d bytes < threshold: %d bytes)",
-					id, cgroupPath, diskUsage, p.config.Io.MaxDiskBytes)
+				p.log.WithField("container_name", containerName).WithField("pod_namespace", podNamespace).
+					Infof("Removed io limit from container %s (cgroup: %s, disk usage: %d bytes < threshold: %d bytes)",
+						id, cgroupPath, diskUsage, p.config.Io.MaxDiskBytes)
 
 				// Remove from map
 				p.mu.Lock()
@@ -232,7 +250,7 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 }
 
 // checks a single container and clear cache
-func (p *Plugin) clearCache(ctx context.Context, id string, cgroupPath string) {
+func (p *Plugin) clearCache(ctx context.Context, id string, cgroupPath string, containerName, podNamespace string) {
 	statpath, err := cgroup.GetCgroupFilePath(cgroupPath, "memory", "memory.stat")
 	if err != nil {
 		return
@@ -244,9 +262,14 @@ func (p *Plugin) clearCache(ctx context.Context, id string, cgroupPath string) {
 
 	if memstat.cache > p.config.Memory.MinCacheBytes && memstat.ratio > p.config.Memory.CacheRssRatio {
 		// Memory usage exceeds threshold, Apply limit
-		p.log.Infof("Container id %s memory exceeds, %s", id, memstat)
+		p.log.WithField("container_id", id).WithField("container_name", containerName).WithField("pod_namespace", podNamespace).
+			Infof("Memory exceeds, rss(%d), cache(%d), ratio(%.2f)", memstat.rss, memstat.cache, memstat.ratio)
 		if err := ApplyCleanCache(cgroupPath, memstat.cache); err != nil {
-			p.log.Errorf("Failed to clear cache to container %s (cgroup: %s): %v", id, cgroupPath, err)
+			p.log.WithField("container_id", id).WithField("container_name", containerName).WithField("pod_namespace", podNamespace).
+				WithError(err).Error("Failed to clear cache")
+		} else {
+			p.log.WithField("container_id", id).WithField("container_name", containerName).WithField("pod_namespace", podNamespace).
+				Infof("Successfully cleared cache (%d bytes)", memstat.cache)
 		}
 	}
 }
