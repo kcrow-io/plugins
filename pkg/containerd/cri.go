@@ -54,7 +54,7 @@ func (c *CRIClient) ListContainers(ctx context.Context, filter *runtimeapi.Conta
 }
 
 // GetContainerStatus gets the status of a specific container
-func (c *CRIClient) GetContainerStatus(ctx context.Context, containerID string) (*runtimeapi.ContainerStatus, error) {
+func (c *CRIClient) GetContainerStatus(ctx context.Context, containerID string) (*runtimeapi.ContainerStatusResponse, error) {
 	req := &runtimeapi.ContainerStatusRequest{
 		ContainerId: containerID,
 		Verbose:     true,
@@ -65,5 +65,5 @@ func (c *CRIClient) GetContainerStatus(ctx context.Context, containerID string) 
 		return nil, fmt.Errorf("failed to get container status: %w", err)
 	}
 
-	return resp.Status, nil
+	return resp, nil
 }
