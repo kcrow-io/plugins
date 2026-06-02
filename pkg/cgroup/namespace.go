@@ -96,7 +96,7 @@ func IsInRootCgroup(pid int) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to open %s: %w", cgroupPath, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -122,7 +122,7 @@ func GetCgroupPath(pid int) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open %s: %w", cgroupPath, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
