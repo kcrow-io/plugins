@@ -6,7 +6,7 @@ exclude google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/containerd/containerd/v2 v2.3.1
+	github.com/containerd/containerd/v2 v2.3.2
 	github.com/containerd/nri v0.12.0
 	github.com/golangci/golangci-lint/v2 v2.12.2
 	github.com/opencontainers/cgroups v0.0.7
