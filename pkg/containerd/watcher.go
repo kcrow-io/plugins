@@ -28,6 +28,9 @@ type Watcher struct {
 	subscribers []subscriberEntry
 	mu          sync.RWMutex
 	pool        *pool.WorkerPool
+	ctx         context.Context
+	cancel      context.CancelFunc
+	watchWg     sync.WaitGroup
 }
 
 type subscriberEntry struct {
@@ -56,18 +59,23 @@ func NewWatcher(client *Cntrd, config *Config) (*Watcher, error) {
 		config.WorkerPoolSize = 4
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	w := &Watcher{
 		client:      client,
 		config:      config,
 		stopCh:      make(chan struct{}),
 		subscribers: make([]subscriberEntry, 0),
 		pool:        pool.New(config.WorkerPoolSize),
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 
 	// Initialize CRI client if socket is provided
 	if config.CRISocket != "" {
 		criClient, err := NewCRIClient(config.CRISocket)
 		if err != nil {
+			cancel()
 			return nil, err
 		}
 		w.criClient = criClient
@@ -122,12 +130,15 @@ func (w *Watcher) Unsubscribe(id string) {
 func (w *Watcher) Start() {
 	logrus.Infof("Starting watcher (interval: %s, workers: %d)", w.config.WatchInterval, w.config.WorkerPoolSize)
 
+	w.watchWg.Add(1)
 	go w.watch()
 }
 
 // Stop stops the watcher
 func (w *Watcher) Stop() {
 	close(w.stopCh)
+	w.watchWg.Wait() // Wait for watch goroutine to exit first
+	w.cancel()       // Cancel context
 	if w.pool != nil {
 		w.pool.Stop()
 	}
@@ -139,6 +150,8 @@ func (w *Watcher) Stop() {
 
 // watch is the main watch loop
 func (w *Watcher) watch() {
+	defer w.watchWg.Done()
+
 	for {
 		select {
 		case <-time.After(w.config.WatchInterval):
@@ -161,7 +174,7 @@ func (w *Watcher) hasActiveSubscribers(subscribers []subscriberEntry) bool {
 
 // checkContainers checks all containers and notifies subscribers
 func (w *Watcher) checkContainers() {
-	ctx := context.Background()
+	ctx := w.ctx
 
 	w.mu.RLock()
 	subscribers := make([]subscriberEntry, len(w.subscribers))
@@ -231,7 +244,7 @@ func (w *Watcher) processContainerdContainers(ctx context.Context, containers []
 		container := container // Capture for goroutine
 		wg.Add(1)
 
-		w.pool.Submit(func(poolCtx context.Context) {
+		if !w.pool.Submit(func(poolCtx context.Context) {
 			defer wg.Done()
 
 			for _, idx := range subIndices {
@@ -252,7 +265,9 @@ func (w *Watcher) processContainerdContainers(ctx context.Context, containers []
 					w.mu.Unlock()
 				}
 			}
-		})
+		}) {
+			wg.Done() // Submit failed, decrement immediately
+		}
 	}
 
 	wg.Wait()
@@ -280,7 +295,7 @@ func (w *Watcher) processCRIContainers(ctx context.Context, containers []*runtim
 		container := container // Capture for goroutine
 		wg.Add(1)
 
-		w.pool.Submit(func(poolCtx context.Context) {
+		if !w.pool.Submit(func(poolCtx context.Context) {
 			defer wg.Done()
 
 			for _, idx := range subIndices {
@@ -301,7 +316,9 @@ func (w *Watcher) processCRIContainers(ctx context.Context, containers []*runtim
 					w.mu.Unlock()
 				}
 			}
-		})
+		}) {
+			wg.Done() // Submit failed, decrement immediately
+		}
 	}
 
 	wg.Wait()

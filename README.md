@@ -8,7 +8,7 @@ This project provides common NRI plugins to extend containerd's container runtim
    Overrides container configurations according to ocispec config file, including rlimit settings, hooks, etc.
 
 2. [escape plugin](./docs/escape.md)
-   Allows container's main process to escape resource limits based on annotation `io.kcrow.escape: cpu,memory`
+   Detects containers whose init process has escaped to the host's root cgroup and cleans up orphaned processes when containers are removed (cgroupv2 only)
 
 3. [memory plugin](./docs/memory.md)
    Automatically sets `memory.high` to a percentage of container's memory limit for better memory management
@@ -33,7 +33,7 @@ Each plugin requires a configuration file in JSON format, placed in `/opt/nri/co
 {
   "include-namespace": [],
   "exclude-namespace": ["kube-system", "kube-public"],
-  "high": 0.8
+  "high-ratio": 0.8
 }
 ```
 
@@ -60,7 +60,7 @@ Each plugin requires a configuration file in JSON format, placed in `/opt/nri/co
 NRI plugins are standalone executables that implement the NRI protocol. They should be:
 
 1. **Location**: Placed in `/opt/nri/plugins/` directory
-2. **Naming**: Use descriptive names (e.g., `01-memory`, `02-escape`, `03-limit`)
+2. **Naming**: Use descriptive names (e.g., `06-memory`, `07-limit`, `08-escape`)
    - The numeric prefix determines plugin execution order
 3. **Permissions**: Must be executable (`chmod +x`)
 4. **Format**: ELF 64-bit LSB executable for Linux
@@ -69,14 +69,14 @@ NRI plugins are standalone executables that implement the NRI protocol. They sho
 ```
 /opt/nri/
 └── plugins/
-   ├── 01-memory      # Memory management plugin
-   ├── 02-escape      # Resource limit escape plugin
-   ├── 03-override    # Configuration override plugin
-   └── 04-limit       # I/O limit plugin
+   ├── 06-memory      # Memory management plugin
+   ├── 07-limit       # I/O limit plugin
+   └── 08-escape      # Cgroup escape detection plugin
 /etc/nri/
 └── conf.d/
     ├── memory.conf    # Memory plugin configuration
-    └── limit.conf     # Limit plugin configuration
+    ├── limit.conf     # Limit plugin configuration
+    └── escape.conf    # Escape plugin configuration
 ```
 
 ### Containerd Configuration
@@ -148,7 +148,7 @@ cat <<EOF | sudo tee /opt/nri/conf/memory.conf
 {
   "include-namespace": [],
   "exclude-namespace": ["kube-system", "kube-public"],
-  "high": 0.8
+  "high-ratio": 0.8
 }
 EOF
 
@@ -170,10 +170,9 @@ sudo mkdir -p /opt/nri/plugins
 sudo mkdir -p /opt/nri/conf
 
 # 3. Copy plugin binaries
-sudo cp bin/linux/amd64/memory /opt/nri/plugins/01-memory
-sudo cp bin/linux/amd64/escape /opt/nri/plugins/02-escape
-sudo cp bin/linux/amd64/override /opt/nri/plugins/03-override
-sudo cp bin/linux/amd64/limit /opt/nri/plugins/04-limit
+sudo cp bin/linux/amd64/memory /opt/nri/plugins/06-memory
+sudo cp bin/linux/amd64/limit /opt/nri/plugins/07-limit
+sudo cp bin/linux/amd64/escape /opt/nri/plugins/08-escape
 
 # 4. Set executable permissions
 sudo chmod +x /opt/nri/plugins/*
@@ -195,7 +194,7 @@ sudo journalctl -u containerd -f | grep -i nri
 
 # Test with a container
 sudo ctr run --rm --runtime io.containerd.runc.v2 \
-  --annotation io.kcrow.escape=cpu,memory \
+  --memory-limit 1073741824 \
   docker.io/library/alpine:latest test sh -c "echo 'NRI plugin working'"
 ```
 
@@ -205,9 +204,9 @@ sudo ctr run --rm --runtime io.containerd.runc.v2 \
 # Build plugins
 make build
 
-# Create container with escape annotation
+# Create container with memory limits
 sudo ctr run --rm --runtime io.containerd.runc.v2 \
-  --annotation io.kcrow.escape=cpu,memory \
+  --memory-limit 1073741824 \
   docker.io/library/alpine:latest test
 ```
 

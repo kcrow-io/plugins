@@ -51,10 +51,7 @@ func (p *WorkerPool) worker() {
 
 	for {
 		select {
-		case task, ok := <-p.taskQueue:
-			if !ok {
-				return
-			}
+		case task := <-p.taskQueue:
 			task(p.ctx)
 		case <-p.ctx.Done():
 			return
@@ -97,7 +94,6 @@ func (p *WorkerPool) Stop() {
 	}
 
 	p.cancel() // Cancel context first to prevent new submissions
-	close(p.taskQueue)
 	p.wg.Wait()
 }
 
@@ -108,7 +104,6 @@ func (p *WorkerPool) StopGracefully() {
 	}
 
 	p.cancel() // Cancel context first
-	close(p.taskQueue)
 	p.wg.Wait()
 }
 

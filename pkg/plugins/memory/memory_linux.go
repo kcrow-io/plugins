@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/containerd/nri/pkg/api"
 	"github.com/containerd/nri/pkg/stub"
@@ -35,8 +37,8 @@ type Config struct {
 // Plugin implements the memory management NRI plugin
 type Plugin struct {
 	stub.Stub
-	config              *Config
-	parentMemoryHighSet bool // tracks if kubepods.slice/memory.high has been set
+	config                *Config
+	kubepodsMemoryHighSet atomic.Bool // tracks if kubepods.slice/memory.high has been set
 }
 
 // New creates a new memory plugin instance
@@ -119,6 +121,13 @@ func (p *Plugin) StartContainer(ctx context.Context, pod *api.PodSandbox, contai
 		return nil
 	}
 
+	// Set kubepods memory.high/soft_limit first (retry on failure)
+	if !p.kubepodsMemoryHighSet.Load() {
+		if err := p.setKubepodsMemoryHigh(ctx, container); err != nil {
+			logger.WithError(err).Warningf("Failed to set kubepods memory limit, will retry")
+		}
+	}
+
 	// Check if container has memory limit - if not, skip
 	if container.Linux == nil || container.Linux.Resources == nil || container.Linux.Resources.Memory == nil {
 		logger.Debug("Container has no memory resources configured, skipping")
@@ -142,13 +151,6 @@ func (p *Plugin) StartContainer(ctx context.Context, pod *api.PodSandbox, contai
 	// Set memory.high using detected cgroup version
 	if err := p.setMemoryHigh(ctx, container, memoryHigh); err != nil {
 		logger.WithError(err).Warningf("Failed to set memoryHigh")
-	}
-
-	// Set kubepods memory.high/soft_limit on first container start
-	if !p.parentMemoryHighSet {
-		if err := p.setParentMemoryHigh(ctx, container); err != nil {
-			logger.WithError(err).Warningf("Failed to set kubepods memory limit")
-		}
 	}
 
 	return nil
@@ -193,9 +195,9 @@ func (p *Plugin) setMemoryHigh(ctx context.Context, container *api.Container, me
 	return nil
 }
 
-// setParentMemoryHigh sets memory.high (v2) or memory.soft_limit_in_bytes (v1) for kubepods
-// This is only called once (on first container start) when set-parent-memory-high is enabled
-func (p *Plugin) setParentMemoryHigh(ctx context.Context, container *api.Container) error {
+// setKubepodsMemoryHigh sets memory.high (v2) or memory.soft_limit_in_bytes (v1) for kubepods
+// Retries on failure until successful
+func (p *Plugin) setKubepodsMemoryHigh(ctx context.Context, container *api.Container) error {
 	logger := log.G(ctx).WithField(plugins.FieldName, PluginName)
 
 	if container.Linux == nil || container.Linux.CgroupsPath == "" {
@@ -245,7 +247,7 @@ func (p *Plugin) setParentMemoryHigh(ctx context.Context, container *api.Contain
 
 	// Handle "max" value (v2) or very large values indicating unlimited
 	if memoryLimitStr == "max" {
-		logger.Infof("kubepods %s is 'max' (unlimited), skipping %s setting", memoryLimitFile, memoryTargetFile)
+		logger.Infof("kubepods %s is 'max' (unlimited), will retry later", memoryLimitFile)
 		return nil
 	}
 
@@ -263,7 +265,7 @@ func (p *Plugin) setParentMemoryHigh(ctx context.Context, container *api.Contain
 	if memoryTarget < 0 {
 		logger.WithField(memoryLimitFile, memoryLimit).
 			Warnf("kubepods high memory(%d) too low, skipping %s setting", memoryTarget, memoryTargetFile)
-		p.parentMemoryHighSet = true
+		p.kubepodsMemoryHighSet.Store(true)
 		return nil
 	}
 
@@ -285,9 +287,8 @@ func (p *Plugin) setParentMemoryHigh(ctx context.Context, container *api.Contain
 		return fmt.Errorf("failed to write %s to %s: %w", memoryTargetFile, parentPath, err)
 	}
 
-	// Mark as set
-	p.parentMemoryHighSet = true
 	logger.Infof("Successfully set kubepods %s", memoryTargetFile)
+	p.kubepodsMemoryHighSet.Store(true)
 
 	return nil
 }
@@ -296,21 +297,12 @@ func (p *Plugin) setParentMemoryHigh(ctx context.Context, container *api.Contain
 func (p *Plugin) shouldProcessNamespace(namespace string) bool {
 	// If include list is specified, namespace must be in it
 	if len(p.config.IncludeNamespaces) > 0 {
-		for _, ns := range p.config.IncludeNamespaces {
-			if ns == namespace {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(p.config.IncludeNamespaces, namespace)
 	}
 
 	// If exclude list is specified, namespace must not be in it
 	if len(p.config.ExcludeNamespaces) > 0 {
-		for _, ns := range p.config.ExcludeNamespaces {
-			if ns == namespace {
-				return false
-			}
-		}
+		return !slices.Contains(p.config.ExcludeNamespaces, namespace)
 	}
 
 	return true

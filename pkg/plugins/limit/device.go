@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // DeviceNumber represents a device major:minor number
 type DeviceNumber struct {
-	Major uint64
-	Minor uint64
+	Major uint32
+	Minor uint32
 }
 
 // String returns the device number in "major:minor" format
@@ -42,12 +44,10 @@ func GetSnapshotDeviceNumber(root, snapshotter string) (*DeviceNumber, error) {
 
 	// Extract major and minor device numbers
 	dev := stat.Dev
-	major := (dev >> 8) & 0xff
-	minor := dev & 0xff
 
 	return &DeviceNumber{
-		Major: major,
-		Minor: minor,
+		Major: unix.Major(dev),
+		Minor: unix.Minor(dev),
 	}, nil
 }
 
@@ -80,11 +80,9 @@ func GetDeviceNumberFromPath(path string) (*DeviceNumber, error) {
 	}
 
 	dev := stat.Dev
-	major := (dev >> 8) & 0xff
-	minor := dev & 0xff
 
 	return &DeviceNumber{
-		Major: major,
-		Minor: minor,
+		Major: unix.Major(dev),
+		Minor: unix.Minor(dev),
 	}, nil
 }
