@@ -12,6 +12,7 @@ require (
 	github.com/opencontainers/cgroups v0.0.7
 	github.com/opencontainers/runtime-spec v1.3.0
 	github.com/sirupsen/logrus v1.9.4
+	golang.org/x/sys v0.46.0
 	golang.org/x/vuln v1.4.0
 	google.golang.org/grpc v1.81.1
 	k8s.io/cri-api v0.36.2
@@ -258,7 +259,6 @@ require (
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260611141451-d61e87d5f4a3 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/tools v0.46.0 // indirect
