@@ -1,0 +1,38 @@
+# containerd configuration for NRI plugin testing
+# Uses loop file as root filesystem
+
+root = "/tmp/nri-test/containerd/root"
+state = "/tmp/nri-test/containerd/state"
+
+[plugins."io.containerd.snapshotter.v1.overlayfs"]
+  root_path = "/tmp/nri-test/containerd/snapshots"
+
+[plugins."io.containerd.grpc.v1.cri"]
+  # Disable CRI plugin sandbox handler to avoid conflicts
+  disable_tcp_service = true
+
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  # Use runc as default runtime
+  default_runtime_name = "runc"
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
+
+[plugins."io.containerd.grpc.v1.cri".cni]
+  # Disable CNI for testing
+  bin_dir = "/opt/cni/bin"
+  conf_dir = "/etc/cni/net.d"
+
+# NRI configuration
+[plugins."io.containerd.nri.v1.nri"]
+  disable = false
+  disable_connections = false
+  plugin_config_path = "/tmp/nri-test/nri/conf.d"
+  plugin_registration_timeout = "5s"
+  plugin_request_timeout = "2s"
+  socket_path = "/tmp/nri-test/nri/nri.sock"
+
+# Enable debug logging
+[debug]
+  level = "debug"
+  address = "/tmp/nri-test/containerd/containerd-debug.sock"

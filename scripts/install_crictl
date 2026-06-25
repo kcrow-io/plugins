@@ -1,0 +1,19 @@
+#!/bin/bash
+# Install crictl binary for e2e testing
+
+set -euo pipefail
+
+CRICTL_VERSION=${CRICTL_VERSION:-"1.31.1"}
+ARCH=${ARCH:-"amd64"}
+
+echo "Installing crictl ${CRICTL_VERSION} for ${ARCH}..."
+
+# Download crictl
+curl -sSL -o crictl.tar.gz "https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRICTL_VERSION}/crictl-v${CRICTL_VERSION}-linux-${ARCH}.tar.gz"
+
+# Extract and install bin only
+sudo tar -xzf crictl.tar.gz -C /usr/local/bin crictl
+rm -f crictl.tar.gz
+
+echo "crictl ${CRICTL_VERSION} installed successfully"
+crictl --version

@@ -10,6 +10,7 @@ all: build
 
 .PHONY: all build
 
+SUDO_CMD ?=
 START_NUM ?= 06
 BIN_SUBDIRS := cmd/memory cmd/limit cmd/escape
 
@@ -63,6 +64,11 @@ test: ## Runs all tests
 
 ci: lint test ## Executes lint, test and generates reports，skip vulnerability scan
 
+
 .PHONY: e2e
-e2e: ## Runs KinD-based end-to-end tests (requires docker, kind, kubectl)
-	@go test -v -tags e2e ./integration/...
+e2e: ## Runs crictl-based end-to-end tests (requires containerd, crictl)
+	@$(SUDO_CMD) go test -v -tags e2e ./integration/...
+
+.PHONY: e2e-verbose
+e2e-verbose: ## Runs e2e tests with verbose output
+	@$(SUDO_CMD) go test -v -tags e2e -v ./integration/...
