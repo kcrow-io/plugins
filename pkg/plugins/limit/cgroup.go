@@ -37,7 +37,7 @@ func applyCleanV1(cgroupPath string, _size uint64) error {
 
 // ApplyIOLimit applies or removes io bandwidth and IOPS limits to/from a container's cgroup
 // If ioLimit is nil, removes all limits. Otherwise, applies the specified limits.
-func ApplyIOLimit(cgroupPath string, device *DeviceNumber, ioLimit *iolimit) error {
+func ApplyIOLimit(cgroupPath string, device *DeviceNumber, ioLimit *IoLimit) error {
 	if cgroups.IsCgroup2UnifiedMode() {
 		return applyIOLimitV2(cgroupPath, device, ioLimit)
 	}
@@ -45,7 +45,7 @@ func ApplyIOLimit(cgroupPath string, device *DeviceNumber, ioLimit *iolimit) err
 }
 
 // applyIOLimitV2 applies or removes io limit for cgroup v2
-func applyIOLimitV2(cgroupPath string, device *DeviceNumber, ioLimit *iolimit) error {
+func applyIOLimitV2(cgroupPath string, device *DeviceNumber, ioLimit *IoLimit) error {
 	var limitStr string
 
 	if ioLimit == nil {
@@ -70,7 +70,7 @@ func applyIOLimitV2(cgroupPath string, device *DeviceNumber, ioLimit *iolimit) e
 }
 
 // applyIOLimitV1 applies or removes io limit for cgroup v1
-func applyIOLimitV1(cgroupPath string, device *DeviceNumber, ioLimit *iolimit) error {
+func applyIOLimitV1(cgroupPath string, device *DeviceNumber, ioLimit *IoLimit) error {
 	if ioLimit == nil {
 		// Remove limits by setting to 0
 		zeroLimit := fmt.Sprintf("%s 0", device.String())

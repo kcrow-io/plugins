@@ -1,0 +1,36 @@
+#!/bin/bash
+# Install CNI plugins for e2e testing
+
+set -euo pipefail
+
+CNI_PLUGINS_VERSION=${CNI_PLUGINS_VERSION:-"1.6.2"}
+ARCH=${ARCH:-"amd64"}
+INSTALL_DIR=${CNI_INSTALL_DIR:-"/opt/cni/bin"}
+CONF_DIR=${CNI_CONF_DIR:-"/etc/cni/net.d"}
+
+echo "Installing CNI plugins ${CNI_PLUGINS_VERSION} for ${ARCH}..."
+
+# Download CNI plugins
+curl -sSL -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/v${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-v${CNI_PLUGINS_VERSION}.tgz"
+
+# Create directories
+sudo mkdir -p ${INSTALL_DIR}
+sudo mkdir -p ${CONF_DIR}
+
+# Extract and install
+sudo tar -xzf cni-plugins.tgz -C ${INSTALL_DIR}
+rm -f cni-plugins.tgz
+
+# Verify installation
+echo "CNI plugins installed successfully"
+ls -la ${INSTALL_DIR}/
+
+# Create environment file for integration tests
+ENV_FILE="/tmp/cni_env.sh"
+cat > "${ENV_FILE}" << EOF
+export CNI_BIN_DIR="${INSTALL_DIR}"
+export CNI_CONF_DIR="${CONF_DIR}"
+export PATH="${INSTALL_DIR}:\${PATH}"
+EOF
+
+echo "Environment file created at: ${ENV_FILE}"

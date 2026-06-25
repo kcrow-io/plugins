@@ -1,70 +1,79 @@
 # Memory Plugin
 
-The memory plugin is an NRI plugin that automatically sets `memory.high` for containers based on their memory limits.
+The memory plugin is an NRI plugin that automatically sets `memory.high` for containers based on their memory limits. It also sets the parent kubepods cgroup's memory limits on first container start.
 
 ## Features
 
 - Automatically sets `memory.high` to a percentage of the container's memory limit
+- Automatically sets kubepods parent cgroup `memory.high` (v2) or `memory.soft_limit_in_bytes` (v1) with retry on failure
 - Supports namespace filtering (include/exclude lists)
-- Configurable high percentage (default: 80%)
-- **Cgroup v1 and v2 Support**: Automatically detects and works with both cgroup versions
-- **Multiple Cgroup Drivers**: Supports both cgroupfs and systemd cgroup drivers
-- **Robust Path Detection**: Automatically finds memory subsystem mount points
-- Works with Kubernetes and standalone containerd
+- Configurable high ratio (default: 0.8, i.e., 80%)
+- Cgroup v1 and v2 support with automatic detection
+- Configurable file logging
+- Plugin can be disabled via configuration
 
 ## Configuration
 
-The plugin reads configuration from `/etc/nri/conf.d/memory.json` by default.
+The plugin reads configuration from `/opt/nri/conf/memory.conf` or `/etc/nri/conf.d/memory.conf`.
 
 ### Configuration Options
 
 ```json
 {
+  "disabled": false,
   "include-namespace": ["production", "staging"],
   "exclude-namespace": ["kube-system", "kube-public"],
-  "high": 0.8
+  "high-ratio": 0.8,
+  "log_path": "/var/log/memory-plugin.log"
 }
 ```
 
-- `include-namespace`: Only process containers in these namespaces (empty = all namespaces)
-- `exclude-namespace`: Skip containers in these namespaces
-- `high`: Percentage of memory limit to set as memory.high (0.0-1.0, default: 0.8)
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `disabled` | bool | `false` | Disable the plugin entirely |
+| `include-namespace` | []string | `[]` | Only process containers in these namespaces (empty = all) |
+| `exclude-namespace` | []string | `[]` | Skip containers in these namespaces |
+| `high-ratio` | float64 | `0.8` | Ratio of memory limit to set as memory.high (0.0-1.0) |
+| `log_path` | string | `""` | Path to log file (empty = stdout only) |
 
 ## How it works
 
-1. **Startup Detection**: At plugin startup, it detects the cgroup version (v1 or v2) and finds memory mount points
-2. **Container Start**: When a container starts, the plugin checks if it has a memory limit set
-3. **Namespace Filtering**: If the container's namespace matches the filtering rules, it proceeds
-4. **Memory.high Calculation**: It calculates `memory.high` as `memory_limit * high_percentage`
-5. **Direct Setting**: The plugin directly sets the `memory.high` value using the opencontainers/cgroups library
-6. **Skip if No Limit**: If the container has no memory limit configured, the plugin skips processing
+### Container Start Phase
 
-### Key Design Principles
+When a container starts, the plugin performs the following steps:
 
-- **One-time Detection**: Cgroup version and mount points are detected once at startup for efficiency
-- **StartContainer Phase**: Memory.high is set during the container start phase, not creation
-- **Skip No-limit Containers**: Containers without memory limits are automatically skipped
-- **Minimal Overhead**: Simple and efficient implementation with minimal runtime checks
+1. **Disabled Check**: If `disabled` is true, skip processing entirely
+2. **Namespace Filtering**: Check if the container's namespace matches filtering rules
+3. **Kubepods Memory Setup** (first successful attempt):
+   - Extract the kubepods cgroup path from the container's cgroups path
+   - Read the kubepods memory limit (`memory.max` for v2, `memory.limit_in_bytes` for v1)
+   - If the limit is `"max"` (unlimited), skip and retry later
+   - Calculate target value: `limit * high_ratio`, capped at 200MB reduction
+   - Write to `memory.high` (v2) or `memory.soft_limit_in_bytes` (v1)
+   - On success, mark as done; on failure, retry on next container start
+4. **Container Memory High**:
+   - Skip if container has no memory limit configured
+   - Calculate `memory_high = memory_limit * high_ratio`
+   - Write to container's `memory.high` (v2) or `memory.soft_limit_in_bytes` (v1)
 
-### Cgroup Version Support
+### Kubepods Memory High Behavior
 
-#### Cgroup v2 (Unified Hierarchy)
-- Uses `/sys/fs/cgroup` as the base path
-- Directly writes to `memory.high` file
-- Supports all modern container runtimes
+The kubepods parent cgroup memory limit is set only once (on first successful attempt):
 
-#### Cgroup v1 (Legacy)
-- Detects memory subsystem mount point (typically `/sys/fs/cgroup/memory`)
-- Supports both cgroupfs and systemd drivers:
-  - **systemd driver**: Handles `.slice` paths correctly
-  - **cgroupfs driver**: Direct path mapping
-- Gracefully handles systems where `memory.high` is not available
+- **Success**: Sets the flag and skips future attempts
+- **Failure with error**: Retries on next container start
+- **Memory limit is "max"**: Retries later (does not set flag)
+- **Calculated target < 0**: Skips permanently (sets flag)
 
-### Driver Detection
+## Cgroup Version Support
 
-The plugin automatically detects the cgroup driver by examining the cgroup path:
-- **systemd driver**: Paths contain `.slice` (e.g., `/system.slice/containerd.service/...`)
-- **cgroupfs driver**: Direct hierarchical paths (e.g., `/kubepods/besteffort/...`)
+### Cgroup v2 (Unified Hierarchy)
+- Container: Writes to `memory.high`
+- Kubepods: Reads `memory.max`, writes to `memory.high`
+
+### Cgroup v1 (Legacy)
+- Container: Writes to `memory.soft_limit_in_bytes`
+- Kubepods: Reads `memory.limit_in_bytes`, writes to `memory.soft_limit_in_bytes`
 
 ## Installation
 
@@ -75,13 +84,18 @@ The plugin automatically detects the cgroup driver by examining the cgroup path:
 
 2. Copy the binary to the NRI plugins directory:
    ```bash
-   sudo cp bin/linux/amd64/memory /opt/nri/bin/10-memory
+   sudo cp bin/linux/amd64/memory /opt/nri/plugins/10-memory
    ```
 
 3. Create configuration file:
    ```bash
-   sudo mkdir -p /etc/nri/conf.d
-   sudo cp cmd/memory/config.json /etc/nri/conf.d/memory.json
+   sudo mkdir -p /opt/nri/conf
+   sudo tee /opt/nri/conf/memory.conf <<EOF
+   {
+     "high-ratio": 0.8,
+     "log_path": "/var/log/memory-plugin.log"
+   }
+   EOF
    ```
 
 4. Restart containerd:
@@ -91,40 +105,32 @@ The plugin automatically detects the cgroup driver by examining the cgroup path:
 
 ## Example
 
-For a container with memory limit of 1GB and high percentage of 0.8:
+For a container with memory limit of 1GB and high ratio of 0.8:
 - Memory limit: 1073741824 bytes (1GB)
-- Memory high: 858993459 bytes (800MB)
+- Memory high: 858993459 bytes (~800MB)
 
-This allows the container to use up to 800MB before memory reclaim becomes more aggressive, while still enforcing the hard limit at 1GB.
+This allows the container to use up to ~800MB before memory reclaim becomes more aggressive, while still enforcing the hard limit at 1GB.
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Cgroup Path Not Found**
-   - **Symptom**: Error "cgroup directory does not exist"
-   - **Solution**: Verify the container runtime is properly configured and containers have valid cgroup paths
+1. **Container has no memory limit**
+   - **Log message**: `"Container has no memory limit set, skipping"`
+   - **Cause**: The container spec does not include `resources.limits.memory`
+   - **Solution**: Set memory limits in the pod spec
 
-2. **Memory.high Not Available (Cgroup v1)**
-   - **Symptom**: Warning "memory.high not available in cgroup v1, skipping"
-   - **Explanation**: Some cgroup v1 systems don't support memory.high
-   - **Solution**: This is expected behavior; the plugin will skip setting memory.high gracefully
+2. **Failed to set kubepods memory limit**
+   - **Log message**: `"Failed to set kubepods memory limit, will retry"`
+   - **Cause**: Permission denied or cgroup path not found
+   - **Solution**: Ensure the plugin runs with sufficient privileges; it will retry automatically
 
-3. **Permission Denied**
-   - **Symptom**: Error writing to memory.high file
-   - **Solution**: Ensure the plugin runs with sufficient privileges to modify cgroup files
-
-4. **Mount Point Detection Failed**
-   - **Symptom**: Error "memory cgroup mount point not found"
-   - **Solution**: Verify cgroups are properly mounted and accessible
+3. **Kubepods memory is 'max' (unlimited)**
+   - **Log message**: `"kubepods memory.max is 'max' (unlimited), will retry later"`
+   - **Cause**: The kubepods cgroup has no memory limit set yet
+   - **Solution**: This is normal during early boot; the plugin will retry when containers start
 
 ### Debug Information
-
-The plugin logs detailed information about:
-- Cgroup version detection (v1 vs v2)
-- Cgroup driver detection (systemd vs cgroupfs)
-- Path resolution and filesystem operations
-- Memory.high calculations and settings
 
 Check containerd logs for plugin output:
 ```bash
@@ -137,23 +143,23 @@ To verify the plugin is working:
 
 1. **Check Plugin Loading**:
    ```bash
-   sudo journalctl -u containerd | grep "memory plugin configured"
+   sudo journalctl -u containerd | grep "Memory plugin configured"
    ```
 
-2. **Verify Memory.high Setting**:
+2. **Verify Container memory.high**:
    ```bash
-   # Find a container with memory limit
-   CONTAINER_ID=$(sudo ctr containers list | grep your-container | awk '{print $1}')
-
-   # Check the memory.high value (cgroup v2)
-   sudo cat /sys/fs/cgroup/$(sudo ctr containers info $CONTAINER_ID | grep CgroupsPath | cut -d'"' -f4)/memory.high
-
-   # For cgroup v1, check:
-   sudo cat /sys/fs/cgroup/memory/$(sudo ctr containers info $CONTAINER_ID | grep CgroupsPath | cut -d'"' -f4)/memory.high
+   # For cgroup v2
+   cat /sys/fs/cgroup/kubepods/<pod-uid>/<container-id>/memory.high
+   
+   # For cgroup v1
+   cat /sys/fs/cgroup/memory/kubepods/<pod-uid>/<container-id>/memory.soft_limit_in_bytes
    ```
 
-3. **Monitor Plugin Activity**:
+3. **Verify Kubepods memory.high**:
    ```bash
-   # Watch for memory plugin log entries
-   sudo journalctl -u containerd -f | grep "io.kcrow.memory"
+   # For cgroup v2
+   cat /sys/fs/cgroup/kubepods/memory.high
+   
+   # For cgroup v1
+   cat /sys/fs/cgroup/memory/kubepods/memory.soft_limit_in_bytes
    ```

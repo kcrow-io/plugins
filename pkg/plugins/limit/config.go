@@ -22,60 +22,60 @@ const (
 	DefaultUsagePercent  = 80
 )
 
-type iolimit struct {
+type IoLimit struct {
 	MaxDiskBytes uint64 `json:"max_disk_bytes,omitempty"`
 	BpsLimit     uint64 `json:"bps_limit,omitempty"`
 	IopsLimit    uint64 `json:"iops_limit,omitempty"`
 }
 
-func DefaultIoLimit() *iolimit {
-	return &iolimit{
+func DefaultIoLimit() *IoLimit {
+	return &IoLimit{
 		MaxDiskBytes: DefaultMaxDiskBytes, // 10GB
 		BpsLimit:     4194304,             // 4MB/s
 		IopsLimit:    10,                  // 10 IOPS
 	}
 }
 
-func (i *iolimit) Valid() error {
+func (i *IoLimit) Valid() error {
 	return nil
 }
 
-func (i *iolimit) CopyTo(dst *iolimit) {
+func (i *IoLimit) CopyTo(dst *IoLimit) {
 	dst.MaxDiskBytes = i.MaxDiskBytes
 	dst.BpsLimit = i.BpsLimit
 	dst.IopsLimit = i.IopsLimit
 }
-func (i *iolimit) String() string {
+func (i *IoLimit) String() string {
 	return fmt.Sprintf("max_disk_bytes: %d, bps_limit: %d, iops_limit: %d", i.MaxDiskBytes, i.BpsLimit, i.IopsLimit)
 }
 
-type memlimit struct {
+type MemLimit struct {
 	PodsUsagePercent uint64  `json:"pods-usage-percent,omitempty"`
 	CacheRssRatio    float64 `json:"cache-rss-ratio,omitempty"`
 	MinCacheBytes    uint64  `json:"min-cache-bytes,omitempty"`
 }
 
-func DefaultMemLimit() *memlimit {
-	return &memlimit{
+func DefaultMemLimit() *MemLimit {
+	return &MemLimit{
 		PodsUsagePercent: DefaultUsagePercent,
 		CacheRssRatio:    DefaultCacheRssRatio,
 		MinCacheBytes:    DefaultMinCacheBytes,
 	}
 }
 
-func (m *memlimit) Valid() error {
+func (m *MemLimit) Valid() error {
 	if m.CacheRssRatio < 3 {
 		return fmt.Errorf("cache-rss-ratio must be greater than 3")
 	}
 	return nil
 }
 
-func (m *memlimit) CopyTo(dst *memlimit) {
+func (m *MemLimit) CopyTo(dst *MemLimit) {
 	dst.PodsUsagePercent = m.PodsUsagePercent
 	dst.CacheRssRatio = m.CacheRssRatio
 	dst.MinCacheBytes = m.MinCacheBytes
 }
-func (m *memlimit) String() string {
+func (m *MemLimit) String() string {
 	return fmt.Sprintf("pods-usage-percent: %d, cache-rss-ratio: %f, min-cache-bytes: %d", m.PodsUsagePercent, m.CacheRssRatio, m.MinCacheBytes)
 }
 
@@ -89,8 +89,8 @@ type Config struct {
 	WatchInterval int `json:"watch_interval,omitempty"`
 
 	// BpsLimit is the bandwidth limit in bytes per second
-	Io     *iolimit  `json:"io,omitempty"`
-	Memory *memlimit `json:"memory,omitempty"`
+	Io     *IoLimit  `json:"io,omitempty"`
+	Memory *MemLimit `json:"memory,omitempty"`
 
 	// LogPath is the path to the log file
 	LogPath string `json:"log_path,omitempty"`

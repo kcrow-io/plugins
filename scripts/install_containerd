@@ -1,0 +1,39 @@
+#!/bin/bash
+# Install containerd binary for e2e testing
+
+set -euo pipefail
+
+CONTAINERD_VERSION=${CONTAINERD_VERSION:-"1.7.27"}
+ARCH=${ARCH:-"amd64"}
+INSTALL_DIR="/usr/local/bin"
+
+echo "Installing containerd ${CONTAINERD_VERSION} for ${ARCH}..."
+
+# Download containerd
+curl -sSL -o containerd.tar.gz "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz"
+
+# Extract and install bin only
+sudo mkdir -p ${INSTALL_DIR}
+sudo tar --strip-components=1 -xzf containerd.tar.gz -C ${INSTALL_DIR}
+rm -f containerd.tar.gz
+
+# Verify installed version using full path
+INSTALLED_VERSION=$(${INSTALL_DIR}/containerd --version | grep -oP 'v\K[0-9]+\.[0-9]+\.[0-9]+')
+if [ "${INSTALLED_VERSION}" != "${CONTAINERD_VERSION}" ]; then
+    echo "ERROR: Version mismatch!"
+    echo "  Expected: ${CONTAINERD_VERSION}"
+    echo "  Installed: ${INSTALLED_VERSION}"
+    exit 1
+fi
+
+# Create environment file for integration tests
+ENV_FILE="/tmp/containerd_env.sh"
+cat > "${ENV_FILE}" << EOF
+export CONTAINERD_BIN="${INSTALL_DIR}/containerd"
+export CONTAINERD_SHIM_BIN="${INSTALL_DIR}/containerd-shim-runc-v2"
+export PATH="${INSTALL_DIR}:\${PATH}"
+EOF
+
+echo "containerd ${CONTAINERD_VERSION} installed successfully"
+echo "Environment file created at: ${ENV_FILE}"
+${INSTALL_DIR}/containerd --version
