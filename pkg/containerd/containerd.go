@@ -17,8 +17,13 @@ const (
 type containerdConfig struct {
 	Root string `toml:"root"`
 	GRPC struct {
-		Address string `toml:"address,omit"`
-	} `toml:"grpc,omit"`
+		Address string `toml:"address"`
+	} `toml:"grpc"`
+	Plugins struct {
+		IoContainerdServerV1Grpc struct {
+			Address string `toml:"address"`
+		} `toml:"io.containerd.server.v1.grpc"`
+	} `toml:"plugins"`
 }
 
 type Cntrd struct {
@@ -37,9 +42,15 @@ func ParseContainerdConfig(configPath string) (*Cntrd, error) {
 	if _, err := toml.DecodeFile(configPath, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse containerd config: %w", err)
 	}
-	if config.GRPC.Address == "" {
-		config.GRPC.Address = "/run/containerd/containerd.sock"
+	// 新旧格式互斥，优先使用新格式
+	address := config.Plugins.IoContainerdServerV1Grpc.Address
+	if address == "" {
+		address = config.GRPC.Address
 	}
+	if address == "" {
+		address = "/run/containerd/containerd.sock"
+	}
+	config.GRPC.Address = address
 	client, err := client.New(config.GRPC.Address, client.WithDefaultNamespace(DefaultNamespace))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to containerd: %w", err)
