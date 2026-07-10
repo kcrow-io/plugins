@@ -3,6 +3,7 @@ package limit
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -184,6 +185,10 @@ func (p *Plugin) limitblkio(ctx context.Context, id string, container client.Con
 	// Extract container name and pod namespace from labels
 	containerName := info.Labels["io.cri-containerd.name"]
 	podNamespace := info.Labels["io.kubernetes.pod.namespace"]
+
+	if len(p.config.Io.ExcludeNamespaces) > 0 && slices.Contains(p.config.Io.ExcludeNamespaces, podNamespace) {
+		return
+	}
 
 	usage, err := p.config.cntrd.SnapshotService(info.Snapshotter).Usage(ctx, info.SnapshotKey)
 	if err != nil {
