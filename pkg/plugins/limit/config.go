@@ -23,16 +23,18 @@ const (
 )
 
 type IoLimit struct {
-	MaxDiskBytes uint64 `json:"max_disk_bytes,omitempty"`
-	BpsLimit     uint64 `json:"bps_limit,omitempty"`
-	IopsLimit    uint64 `json:"iops_limit,omitempty"`
+	MaxDiskBytes       uint64   `json:"max_disk_bytes,omitempty"`
+	BpsLimit           uint64   `json:"bps_limit,omitempty"`
+	IopsLimit          uint64   `json:"iops_limit,omitempty"`
+	ExcludeNamespaces  []string `json:"exclude_namespaces,omitempty"`
 }
 
 func DefaultIoLimit() *IoLimit {
 	return &IoLimit{
-		MaxDiskBytes: DefaultMaxDiskBytes, // 10GB
-		BpsLimit:     4194304,             // 4MB/s
-		IopsLimit:    10,                  // 10 IOPS
+		MaxDiskBytes:      DefaultMaxDiskBytes, // 10GB
+		BpsLimit:          4194304,             // 4MB/s
+		IopsLimit:         10,                  // 10 IOPS
+		ExcludeNamespaces: []string{"ems"},
 	}
 }
 
@@ -44,9 +46,10 @@ func (i *IoLimit) CopyTo(dst *IoLimit) {
 	dst.MaxDiskBytes = i.MaxDiskBytes
 	dst.BpsLimit = i.BpsLimit
 	dst.IopsLimit = i.IopsLimit
+	dst.ExcludeNamespaces = i.ExcludeNamespaces
 }
 func (i *IoLimit) String() string {
-	return fmt.Sprintf("max_disk_bytes: %d, bps_limit: %d, iops_limit: %d", i.MaxDiskBytes, i.BpsLimit, i.IopsLimit)
+	return fmt.Sprintf("max_disk_bytes: %d, bps_limit: %d, iops_limit: %d, exclude_namespaces: %v", i.MaxDiskBytes, i.BpsLimit, i.IopsLimit, i.ExcludeNamespaces)
 }
 
 type MemLimit struct {
