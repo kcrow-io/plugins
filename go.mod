@@ -15,7 +15,7 @@ require (
 	golang.org/x/sys v0.47.0
 	golang.org/x/vuln v1.6.0
 	google.golang.org/grpc v1.82.1
-	k8s.io/cri-api v0.36.2
+	k8s.io/cri-api v0.36.3
 )
 
 require (
