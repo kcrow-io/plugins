@@ -11,7 +11,7 @@ require (
 	github.com/golangci/golangci-lint/v2 v2.13.1
 	github.com/opencontainers/cgroups v0.1.0
 	github.com/opencontainers/runtime-spec v1.3.0
-	github.com/sirupsen/logrus v1.10.1
+	github.com/sirupsen/logrus v1.10.2
 	golang.org/x/sys v0.47.0
 	golang.org/x/vuln v1.7.0
 	google.golang.org/grpc v1.83.1
