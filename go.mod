@@ -9,7 +9,7 @@ require (
 	github.com/containerd/containerd/v2 v2.4.2
 	github.com/containerd/nri v0.12.5
 	github.com/golangci/golangci-lint/v2 v2.15.0
-	github.com/opencontainers/cgroups v0.1.0
+	github.com/opencontainers/cgroups v0.1.1
 	github.com/opencontainers/runtime-spec v1.3.0
 	github.com/sirupsen/logrus v1.10.2
 	golang.org/x/sys v0.50.0
